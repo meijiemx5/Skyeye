@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Table, Button, Modal, Form, Input, Select, InputNumber, DatePicker, Space, Tag, message, Typography, Popconfirm, Tabs, Card, Row, Col, Statistic } from 'antd';
 import { PlusOutlined, ImportOutlined, ExportOutlined, ToolOutlined } from '@ant-design/icons';
-import { inventoryApi } from '../api/client';
+import { inventoryApi, projectApi } from '../api/client';
 
 const { Title } = Typography;
 const categoryMap: Record<string, string> = { equipment: '弱电设备', cable: '线缆', accessory: '配件', tool: '工具', other: '其他' };
@@ -24,7 +24,9 @@ export default function Inventory() {
   const canAdjust = ['admin', 'warehouse'].includes(user.role);
   const canDelete = user.role === 'admin';
 
-  useEffect(() => { loadAll(); }, []);
+  const [projects, setProjects] = useState<any[]>([]);
+
+  useEffect(() => { loadAll(); projectApi.list().then(r => setProjects(r.data.data || [])).catch(() => {}); }, []);
 
   const loadAll = async () => {
     setLoading(true);
@@ -132,11 +134,26 @@ export default function Inventory() {
 
       <Modal title={stockModal === 'in' ? '入库' : stockModal === 'out' ? '出库' : '盘点调整'} open={!!stockModal} onOk={handleStockSubmit} onCancel={() => setStockModal('')}>
         <Form form={stockForm} layout="vertical">
-          <Form.Item name="material_id" label="物料ID" rules={[{ required: true }]}><Input /></Form.Item>
+          <Form.Item name="material_id" label="选择物料" rules={[{ required: true, message: '请选择物料' }]}>
+            <Select placeholder="选择物料" showSearch optionFilterProp="label"
+              options={materials.map(m => ({ value: m.material_id, label: `${m.material_name}${m.specification ? ' - ' + m.specification : ''} (库存:${m.stock_quantity || 0})` }))}
+            />
+          </Form.Item>
           {stockModal !== 'adjust' && <Form.Item name="quantity" label="数量" rules={[{ required: true }]}><InputNumber style={{ width: '100%' }} /></Form.Item>}
           {stockModal === 'adjust' && <Form.Item name="actual_quantity" label="实际数量" rules={[{ required: true }]}><InputNumber style={{ width: '100%' }} /></Form.Item>}
           {stockModal === 'in' && <Form.Item name="supplier_name" label="供应商"><Input /></Form.Item>}
-          {stockModal === 'out' && <Form.Item name="requester_name" label="领用人"><Input /></Form.Item>}
+          {stockModal === 'out' && (
+            <>
+              <Form.Item name="project_id" label="关联项目" rules={[{ required: true, message: '请选择关联项目' }]}>
+                <Select placeholder="选择项目" showSearch optionFilterProp="label"
+                  options={projects.map(p => ({ value: p.project_id, label: p.project_name }))}
+                  onChange={(v) => { const p = projects.find(x => x.project_id === v); if (p) stockForm.setFieldValue('project_name', p.project_name); }}
+                />
+              </Form.Item>
+              <Form.Item name="project_name" hidden><Input /></Form.Item>
+              <Form.Item name="requester_name" label="领用人"><Input /></Form.Item>
+            </>
+          )}
           {stockModal === 'adjust' && <Form.Item name="adjustment_reason" label="调整原因"><Input.TextArea /></Form.Item>}
           <Form.Item name="record_date" label="日期" rules={[{ required: true }]}><DatePicker style={{ width: '100%' }} /></Form.Item>
         </Form>

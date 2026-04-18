@@ -9,8 +9,11 @@ from ..models.acceptance import AcceptanceDocModel, AcceptanceMemberMap
 from ..schemas.acceptance import AcceptanceCreate, AcceptanceUpdate
 from ..schemas.common import APIResponse
 from ..utils.auth import get_current_user, require_roles
+from ..services.audit import log_action
 
 router = APIRouter(prefix="/api/acceptances", tags=["验收资料"])
+
+def _un(u): return f"{u.get('username','')}({u.get('display_name','')})"
 
 
 def _acceptance_to_dict(a):
@@ -101,6 +104,7 @@ def create_acceptance(req: AcceptanceCreate, current_user: dict = Depends(requir
         a.acceptance_team = team
     
     a.save()
+    log_action(current_user["user_id"], _un(current_user), "create", "acceptance", acceptance_id, f"创建验收: {req.project_name}")
     return APIResponse(message="验收记录创建成功", data={"acceptance_id": acceptance_id})
 
 
@@ -112,9 +116,29 @@ def update_acceptance(acceptance_id: str, req: AcceptanceUpdate, current_user: d
     except DoesNotExist:
         raise HTTPException(status_code=404, detail="验收记录不存在")
     
-    update_data = req.model_dump(exclude_none=True, exclude={"acceptance_team"})
+    update_data = req.model_dump(exclude_none=True, exclude={"acceptance_team", "basic_docs", "engineering_docs"})
     for key, value in update_data.items():
         setattr(a, key, value)
+
+    def _convert_docs(docs_list):
+        from ..models.base import AttachmentMap
+        result = []
+        for d in docs_list:
+            att = AttachmentMap()
+            att.file_id = d.get("file_id", "")
+            att.file_name = d.get("file_name", "")
+            att.file_type = d.get("file_type", "")
+            att.file_size = d.get("file_size", 0)
+            att.s3_key = d.get("s3_key", "")
+            att.upload_time = d.get("upload_time", "")
+            att.uploaded_by = d.get("uploaded_by", "")
+            result.append(att)
+        return result
+
+    if req.basic_docs is not None:
+        a.basic_docs = _convert_docs(req.basic_docs)
+    if req.engineering_docs is not None:
+        a.engineering_docs = _convert_docs(req.engineering_docs)
     
     if req.acceptance_team is not None:
         team = []
@@ -132,6 +156,7 @@ def update_acceptance(acceptance_id: str, req: AcceptanceUpdate, current_user: d
     a.updated_at = datetime.now(timezone.utc).isoformat()
     a.updated_by = current_user["user_id"]
     a.save()
+    log_action(current_user["user_id"], _un(current_user), "update", "acceptance", acceptance_id, f"更新验收: {a.project_name}")
     return APIResponse(message="验收记录更新成功")
 
 
@@ -142,5 +167,6 @@ def delete_acceptance(acceptance_id: str, current_user: dict = Depends(require_r
         a = AcceptanceDocModel.get(AcceptanceDocModel.make_pk(acceptance_id), AcceptanceDocModel.make_sk())
     except DoesNotExist:
         raise HTTPException(status_code=404, detail="验收记录不存在")
+    log_action(current_user["user_id"], _un(current_user), "delete", "acceptance", acceptance_id, f"删除验收: {a.project_name}")
     a.delete()
     return APIResponse(message="验收记录删除成功")

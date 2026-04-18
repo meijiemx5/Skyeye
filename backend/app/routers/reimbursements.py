@@ -9,8 +9,12 @@ from ..models.reimbursement import ReimbursementModel, AuditLogMap
 from ..schemas.reimbursement import ReimbursementCreate, ReimbursementUpdate, ReimbursementAudit, ReimbursementPayment
 from ..schemas.common import APIResponse
 from ..utils.auth import get_current_user, require_roles
+from ..services.audit import log_action
 
 router = APIRouter(prefix="/api/reimbursements", tags=["报销管理"])
+
+def _user_name(u: dict) -> str:
+    return f"{u.get('username','')}({u.get('display_name','')})"
 
 
 def _reimburse_to_dict(r):
@@ -119,12 +123,27 @@ def create_reimbursement(req: ReimbursementCreate, current_user: dict = Depends(
     r.expense_type = req.expense_type
     r.description = req.description
     r.expense_date = req.expense_date
+    
+    if req.vouchers:
+        from ..models.base import AttachmentMap
+        att_list = []
+        for a in req.vouchers:
+            att = AttachmentMap()
+            att.file_id = a.get("file_id", "")
+            att.file_name = a.get("file_name", "")
+            att.file_type = a.get("file_type", "")
+            att.file_size = a.get("file_size", 0)
+            att.s3_key = a.get("s3_key", "")
+            att.upload_time = a.get("upload_time", "")
+            att.uploaded_by = a.get("uploaded_by", "")
+            att_list.append(att)
+        r.vouchers = att_list
     r.status = "pending_review"
     r.created_at = now
     r.updated_at = now
     r.created_by = current_user["user_id"]
     r.save()
-    
+    log_action(current_user["user_id"], _user_name(current_user), "create", "reimbursement", reimburse_id, f"提交报销: ¥{req.amount_with_tax} - {req.description[:30]}")
     return APIResponse(message="报销申请提交成功", data={"reimburse_id": reimburse_id})
 
 
@@ -141,7 +160,22 @@ def update_reimbursement(reimburse_id: str, req: ReimbursementUpdate, current_us
     if r.applicant_id != current_user["user_id"] and current_user["role"] != "admin":
         raise HTTPException(status_code=403, detail="只能修改自己的报销申请")
     
-    update_data = req.model_dump(exclude_none=True)
+    update_data = req.model_dump(exclude_none=True, exclude={"vouchers"})
+    
+    if req.vouchers is not None:
+        from ..models.base import AttachmentMap
+        att_list = []
+        for a in req.vouchers:
+            att = AttachmentMap()
+            att.file_id = a.get("file_id", "")
+            att.file_name = a.get("file_name", "")
+            att.file_type = a.get("file_type", "")
+            att.file_size = a.get("file_size", 0)
+            att.s3_key = a.get("s3_key", "")
+            att.upload_time = a.get("upload_time", "")
+            att.uploaded_by = a.get("uploaded_by", "")
+            att_list.append(att)
+        r.vouchers = att_list
     for key, value in update_data.items():
         setattr(r, key, value)
     
@@ -149,7 +183,7 @@ def update_reimbursement(reimburse_id: str, req: ReimbursementUpdate, current_us
     r.GSI1PK = ReimbursementModel.make_gsi1pk("pending_review")
     r.updated_at = datetime.now(timezone.utc).isoformat()
     r.save()
-    
+    log_action(current_user["user_id"], _user_name(current_user), "update", "reimbursement", reimburse_id, f"更新报销申请")
     return APIResponse(message="报销申请更新成功")
 
 
@@ -196,7 +230,7 @@ def audit_reimbursement(reimburse_id: str, req: ReimbursementAudit, current_user
     r.GSI1PK = ReimbursementModel.make_gsi1pk(r.status)
     r.updated_at = now
     r.save()
-    
+    log_action(current_user["user_id"], _user_name(current_user), "audit", "reimbursement", reimburse_id, f"审核报销({audit_level}): {req.action} - {req.comments or ''}")
     return APIResponse(message="审核操作成功")
 
 
@@ -220,7 +254,7 @@ def pay_reimbursement(reimburse_id: str, req: ReimbursementPayment, current_user
     r.GSI1PK = ReimbursementModel.make_gsi1pk("paid")
     r.updated_at = now
     r.save()
-    
+    log_action(current_user["user_id"], _user_name(current_user), "pay", "reimbursement", reimburse_id, f"报销付款: ¥{req.payment_amount} ({req.payment_method})")
     return APIResponse(message="付款成功")
 
 
@@ -231,5 +265,6 @@ def delete_reimbursement(reimburse_id: str, current_user: dict = Depends(require
         r = ReimbursementModel.get(ReimbursementModel.make_pk(reimburse_id), ReimbursementModel.make_sk())
     except DoesNotExist:
         raise HTTPException(status_code=404, detail="报销记录不存在")
+    log_action(current_user["user_id"], _user_name(current_user), "delete", "reimbursement", reimburse_id, f"删除报销记录")
     r.delete()
     return APIResponse(message="报销记录删除成功")

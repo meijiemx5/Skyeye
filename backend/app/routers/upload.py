@@ -60,17 +60,30 @@ def get_upload_url(
 @router.get("/presigned-download")
 def get_download_url(
     s3_key: str = Query(...),
+    download: bool = Query(False),
     current_user: dict = Depends(get_current_user)
 ):
     """Generate S3 presigned URL for file download."""
     s3_client = _get_s3_client()
     
+    # Determine content type for inline viewing
+    ext = s3_key.rsplit(".", 1)[-1].lower() if "." in s3_key else ""
+    content_type_map = {
+        "pdf": "application/pdf", "jpg": "image/jpeg", "jpeg": "image/jpeg",
+        "png": "image/png", "gif": "image/gif", "svg": "image/svg+xml",
+        "txt": "text/plain", "html": "text/html",
+    }
+    params: dict = {"Bucket": settings.S3_BUCKET_NAME, "Key": s3_key}
+    file_name = s3_key.rsplit("/", 1)[-1] if "/" in s3_key else s3_key
+    if download:
+        params["ResponseContentDisposition"] = f"attachment; filename=\"{file_name}\""
+    elif ext in content_type_map:
+        params["ResponseContentType"] = content_type_map[ext]
+        params["ResponseContentDisposition"] = "inline"
+
     presigned_url = s3_client.generate_presigned_url(
         "get_object",
-        Params={
-            "Bucket": settings.S3_BUCKET_NAME,
-            "Key": s3_key,
-        },
+        Params=params,
         ExpiresIn=3600,
     )
     

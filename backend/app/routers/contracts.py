@@ -9,8 +9,13 @@ from ..models.contract import ContractModel
 from ..schemas.contract import ContractCreate, ContractUpdate, ContractQuery
 from ..schemas.common import APIResponse
 from ..utils.auth import get_current_user, require_roles
+from ..services.audit import log_action
 
 router = APIRouter(prefix="/api/contracts", tags=["合同管理"])
+
+
+def _user_name(u: dict) -> str:
+    return f"{u.get('username','')}({u.get('display_name','')})"
 
 
 def _contract_to_dict(c):
@@ -212,6 +217,7 @@ def create_contract(req: ContractCreate, current_user: dict = Depends(require_ro
         c.payment_nodes = nodes
     
     c.save()
+    log_action(current_user["user_id"], _user_name(current_user), "create", "contract", contract_id, f"创建合同: {req.contract_name}({contract_no})")
     return APIResponse(message="合同创建成功", data={"contract_id": contract_id, "contract_no": contract_no})
 
 
@@ -223,10 +229,25 @@ def update_contract(contract_id: str, req: ContractUpdate, current_user: dict = 
     except DoesNotExist:
         raise HTTPException(status_code=404, detail="合同不存在")
     
-    update_data = req.model_dump(exclude_none=True, exclude={"payment_nodes"})
+    update_data = req.model_dump(exclude_none=True, exclude={"payment_nodes", "attachments"})
     for key, value in update_data.items():
         setattr(c, key, value)
-    
+
+    if req.attachments is not None:
+        from ..models.base import AttachmentMap
+        att_list = []
+        for a in req.attachments:
+            att = AttachmentMap()
+            att.file_id = a.get("file_id", "")
+            att.file_name = a.get("file_name", "")
+            att.file_type = a.get("file_type", "")
+            att.file_size = a.get("file_size", 0)
+            att.s3_key = a.get("s3_key", "")
+            att.upload_time = a.get("upload_time", "")
+            att.uploaded_by = a.get("uploaded_by", "")
+            att_list.append(att)
+        c.attachments = att_list
+
     if req.payment_nodes is not None:
         from ..models.base import PaymentNodeMap
         nodes = []
@@ -244,7 +265,62 @@ def update_contract(contract_id: str, req: ContractUpdate, current_user: dict = 
     c.updated_at = datetime.now(timezone.utc).isoformat()
     c.updated_by = current_user["user_id"]
     c.save()
+    log_action(current_user["user_id"], _user_name(current_user), "update", "contract", contract_id, f"更新合同: {c.contract_name}")
     return APIResponse(message="合同更新成功")
+
+
+@router.get("/{contract_id}/payments")
+def list_payments(contract_id: str, current_user: dict = Depends(get_current_user)):
+    """List payment records for a contract."""
+    try:
+        c = ContractModel.get(ContractModel.make_pk(contract_id), ContractModel.make_sk())
+    except DoesNotExist:
+        raise HTTPException(status_code=404, detail="合同不存在")
+    payments = []
+    for n in (c.payment_nodes or []):
+        payments.append({
+            "node_name": n.node_name, "percentage": n.percentage, "amount": n.amount,
+            "planned_date": n.planned_date, "actual_date": n.actual_date, "status": n.status,
+        })
+    return APIResponse(data=payments, total=len(payments))
+
+
+@router.post("/{contract_id}/payment")
+def add_payment(contract_id: str, payment: dict, current_user: dict = Depends(require_roles("admin", "finance"))):
+    """Add a payment record to contract. Only finance/admin can do this."""
+    try:
+        c = ContractModel.get(ContractModel.make_pk(contract_id), ContractModel.make_sk())
+    except DoesNotExist:
+        raise HTTPException(status_code=404, detail="合同不存在")
+    
+    amount = payment.get("amount", 0)
+    method = payment.get("payment_method", "bank_transfer")
+    note = payment.get("note", "")
+    payment_date = payment.get("payment_date", datetime.now(timezone.utc).strftime("%Y-%m-%d"))
+    
+    if amount <= 0:
+        raise HTTPException(status_code=400, detail="付款金额必须大于0")
+    
+    from ..models.base import PaymentNodeMap
+    node = PaymentNodeMap()
+    node.node_name = f"付款-{payment_date}"
+    node.percentage = 0
+    node.amount = amount
+    node.planned_date = payment_date
+    node.actual_date = payment_date
+    node.status = "paid"
+    
+    nodes = list(c.payment_nodes or [])
+    nodes.append(node)
+    c.payment_nodes = nodes
+    c.paid_amount = (c.paid_amount or 0) + amount
+    c.updated_at = datetime.now(timezone.utc).isoformat()
+    c.updated_by = current_user["user_id"]
+    c.save()
+    
+    log_action(current_user["user_id"], _user_name(current_user), "payment", "contract", contract_id, 
+               f"合同付款: {c.contract_name} ¥{amount} ({method}) {note}")
+    return APIResponse(message=f"付款 ¥{amount} 登记成功", data={"paid_amount": c.paid_amount})
 
 
 @router.delete("/{contract_id}")
@@ -254,5 +330,6 @@ def delete_contract(contract_id: str, current_user: dict = Depends(require_roles
         c = ContractModel.get(ContractModel.make_pk(contract_id), ContractModel.make_sk())
     except DoesNotExist:
         raise HTTPException(status_code=404, detail="合同不存在")
+    log_action(current_user["user_id"], _user_name(current_user), "delete", "contract", contract_id, f"删除合同: {c.contract_name}({c.contract_no})")
     c.delete()
     return APIResponse(message="合同删除成功")

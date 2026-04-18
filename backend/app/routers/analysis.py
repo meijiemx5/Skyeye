@@ -31,12 +31,18 @@ def project_analysis(project_id: str, current_user: dict = Depends(get_current_u
     # Stock records for this project
     stock_records = [r for r in StockRecordModel.scan(filter_condition=StockRecordModel.entity_type == "stock_record") if r.project_id == project_id and r.record_type == "out"]
     
+    # Build material price lookup for records missing unit_price
+    material_prices = {}
+    if stock_records:
+        all_materials = list(MaterialModel.scan(filter_condition=MaterialModel.entity_type == "material"))
+        material_prices = {m.material_id: (m.unit_price or 0) for m in all_materials}
+    
     # Cost analysis
     client_amount = sum(c.amount_with_tax or 0 for c in client_contracts)
     supplier_cost = sum(c.amount_with_tax or 0 for c in supplier_contracts)
     construction_cost = sum(c.amount_with_tax or 0 for c in construction_contracts)
     reimbursement_cost = sum(r.amount_with_tax or 0 for r in reimbursements if r.status == "paid")
-    material_cost = sum((r.quantity or 0) * (r.unit_price or 0) for r in stock_records)
+    material_cost = sum((r.quantity or 0) * (r.unit_price or material_prices.get(r.material_id, 0)) for r in stock_records)
     
     total_cost = supplier_cost + construction_cost + reimbursement_cost + material_cost
     profit = client_amount - total_cost
@@ -125,6 +131,10 @@ def overall_analysis(current_user: dict = Depends(require_roles("admin", "financ
     total_reimbursement = sum(r.amount_with_tax or 0 for r in reimbursements if r.status == "paid")
     inventory_value = sum((m.stock_quantity or 0) * (m.unit_price or 0) for m in materials)
     
+    # Load stock records for material cost
+    stock_records = list(StockRecordModel.scan(filter_condition=StockRecordModel.entity_type == "stock_record"))
+    stock_out_records = [r for r in stock_records if r.record_type == "out"]
+
     # Per-project summary
     project_summaries = []
     for p in projects:
@@ -133,12 +143,17 @@ def overall_analysis(current_user: dict = Depends(require_roles("admin", "financ
         p_supplier = [c for c in supplier_contracts if c.project_id == pid]
         p_construction = [c for c in contracts if c.contract_type == "construction" and c.project_id == pid]
         p_reimburse = [r for r in reimbursements if r.project_id == pid and r.status == "paid"]
-        
+        p_stock_out = [r for r in stock_out_records if r.project_id == pid]
+
         revenue = sum(c.amount_with_tax or 0 for c in p_client)
+        # Fallback to material's current price if stock record has no unit_price
+        mat_prices = {m.material_id: (m.unit_price or 0) for m in materials}
+        material_cost = sum((r.quantity or 0) * (r.unit_price or mat_prices.get(r.material_id, 0)) for r in p_stock_out)
         cost = (sum(c.amount_with_tax or 0 for c in p_supplier) +
                 sum(c.amount_with_tax or 0 for c in p_construction) +
-                sum(r.amount_with_tax or 0 for r in p_reimburse))
-        
+                sum(r.amount_with_tax or 0 for r in p_reimburse) +
+                material_cost)
+
         project_summaries.append({
             "project_id": pid,
             "project_name": p.project_name,

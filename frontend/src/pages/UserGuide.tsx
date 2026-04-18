@@ -17,6 +17,7 @@ const permissionData = [
   { key: '8', module: '合同管理', sub: '创建供应商合同', admin: true, finance: false, pm: false, procurement: true, construction: false, warehouse: false },
   { key: '9', module: '合同管理', sub: '删除合同', admin: true, finance: false, pm: false, procurement: false, construction: false, warehouse: false },
   { key: '10', module: '合同管理', sub: '查看合同', admin: true, finance: true, pm: true, procurement: true, construction: true, warehouse: false },
+  { key: '10b', module: '合同管理', sub: '合同付款登记', admin: true, finance: true, pm: false, procurement: false, construction: false, warehouse: false },
   { key: '11', module: '报销管理', sub: '提交报销申请', admin: true, finance: true, pm: true, procurement: true, construction: true, warehouse: true },
   { key: '12', module: '报销管理', sub: '主管审核', admin: true, finance: false, pm: true, procurement: false, construction: false, warehouse: false },
   { key: '13', module: '报销管理', sub: '财务审核', admin: true, finance: true, pm: false, procurement: false, construction: false, warehouse: false },
@@ -93,6 +94,7 @@ const roleGuides = [
           <ul>
             <li><b>报销审核</b>：左侧菜单 → 报销管理，查看"主管已审"状态的报销，点击"审核"进行财务审核</li>
             <li><b>付款操作</b>：财务审核通过后，点击"付款"，填写付款金额、方式和时间</li>
+            <li><b>合同付款</b>：在合同列表「已付款」列点击💲付款按钮，登记每笔付款（金额、方式、日期）</li>
             <li><b>合同查看</b>：可查看所有合同的付款进度和金额信息</li>
             <li><b>数据分析</b>：查看项目收入、成本和利润分析</li>
           </ul>
@@ -100,6 +102,14 @@ const roleGuides = [
         <Title level={5}>报销审批流程</Title>
         <Paragraph>
           报销申请 → <Text strong>主管审核</Text> → <Text strong>财务审核（您）</Text> → <Text strong>付款（您）</Text> → 完成
+        </Paragraph>
+        <Title level={5}>报销编辑规则</Title>
+        <Paragraph>
+          <ul>
+            <li><b>待审核/已驳回</b>：申请人本人和管理员可编辑（修改金额、事由、凭证等）</li>
+            <li><b>主管已审/财务已审/已付款</b>：不可编辑，只能查看</li>
+            <li>被驳回后可修改并重新提交，状态自动变回"待审核"</li>
+          </ul>
         </Paragraph>
       </div>
     ),
@@ -202,7 +212,48 @@ export default function UserGuide() {
       <Collapse items={roleGuides} defaultActiveKey={[]} style={{ marginTop: 16 }} />
 
       <Divider />
-      <Title level={5}>三、通用操作</Title>
+      <Title level={5}>三、附件上传</Title>
+      <Card size="small">
+        <Paragraph>
+          系统支持在以下模块上传附件，附件直传S3存储，支持下载和删除：
+        </Paragraph>
+        <Table size="small" pagination={false} bordered style={{ marginBottom: 16 }}
+          dataSource={[
+            { key: '1', module: '合同管理', timing: '编辑合同时', types: '合同PDF、发票、到款截图', where: '编辑弹窗底部「附件」区域' },
+            { key: '2', module: '报销管理', timing: '提交报销时', types: '发票、收据（最多5个）', where: '提交弹窗底部「报销凭证」区域' },
+            { key: '3', module: '验收资料', timing: '编辑验收时', types: '验收报告、施工图纸、调试报告', where: '编辑弹窗底部（分为基础资料和工程资料）' },
+          ]}
+          columns={[
+            { title: '模块', dataIndex: 'module', key: 'module', width: 100 },
+            { title: '上传时机', dataIndex: 'timing', key: 'timing', width: 120 },
+            { title: '附件类型', dataIndex: 'types', key: 'types' },
+            { title: '上传位置', dataIndex: 'where', key: 'where' },
+          ]}
+        />
+        <Paragraph>
+          <b>操作步骤：</b>
+          <ol>
+            <li>进入对应模块，点击记录的「编辑」按钮（或新建）</li>
+            <li>在弹窗中向下滚动找到「附件」或「报销凭证」区域</li>
+            <li>点击「上传附件」按钮，选择文件</li>
+            <li>上传成功后文件会显示在列表中，可下载或删除</li>
+            <li>点击「确定」保存记录（附件信息随记录一起保存）</li>
+          </ol>
+        </Paragraph>
+        <Paragraph>
+          <b>查看与下载：</b>
+          <ul>
+            <li>列表页「附件」或「凭证」列显示已上传文件数量</li>
+            <li>点击「编辑」进入详情查看附件列表</li>
+            <li>可预览的文件（PDF、图片、TXT）显示「查看」按钮，点击在新标签页中在线预览</li>
+            <li>所有文件都有「下载」按钮，点击直接下载到本地</li>
+            <li>编辑模式下可点击「删除」移除附件</li>
+          </ul>
+        </Paragraph>
+      </Card>
+
+      <Divider />
+      <Title level={5}>四、通用操作</Title>
       <Card size="small">
         <Paragraph>
           <ul>

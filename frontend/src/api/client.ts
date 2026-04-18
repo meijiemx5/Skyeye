@@ -62,6 +62,8 @@ export const contractApi = {
   update: (id: string, data: any) => client.put(`/api/contracts/${id}`, data),
   delete: (id: string) => client.delete(`/api/contracts/${id}`),
   statistics: (params?: any) => client.get('/api/contracts/statistics', { params }),
+  addPayment: (id: string, data: any) => client.post(`/api/contracts/${id}/payment`, data),
+  getPayments: (id: string) => client.get(`/api/contracts/${id}/payments`),
 };
 
 // Reimbursement API
@@ -113,5 +115,5 @@ export const auditLogApi = {
 // Upload API
 export const uploadApi = {
   getUploadUrl: (params: any) => client.post('/api/upload/presigned-url', null, { params }),
-  getDownloadUrl: (s3Key: string) => client.get('/api/upload/presigned-download', { params: { s3_key: s3Key } }),
+  getDownloadUrl: (s3Key: string, download: boolean = false) => client.get('/api/upload/presigned-download', { params: { s3_key: s3Key, download } }),
 };

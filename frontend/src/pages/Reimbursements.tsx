@@ -1,7 +1,10 @@
 import { useEffect, useState } from 'react';
 import { Table, Button, Modal, Form, Input, Select, InputNumber, DatePicker, Space, Tag, message, Typography } from 'antd';
 import { PlusOutlined, CheckOutlined, DollarOutlined } from '@ant-design/icons';
-import { reimbursementApi } from '../api/client';
+import { reimbursementApi, projectApi } from '../api/client';
+import dayjs from 'dayjs';
+import FileUpload, { FileInfo } from '../components/FileUpload';
+import FileManager from '../components/FileManager';
 
 const { Title } = Typography;
 const statusMap: Record<string, { label: string; color: string }> = {
@@ -16,12 +19,16 @@ export default function Reimbursements() {
   const [modalOpen, setModalOpen] = useState(false);
   const [auditModal, setAuditModal] = useState<any>(null);
   const [payModal, setPayModal] = useState<any>(null);
+  const [vouchers, setVouchers] = useState<FileInfo[]>([]);
+  const [editingReimburse, setEditingReimburse] = useState<any>(null);
+  const [fileRecord, setFileRecord] = useState<any>(null);
   const [form] = Form.useForm();
   const [auditForm] = Form.useForm();
   const [payForm] = Form.useForm();
+  const [projects, setProjects] = useState<any[]>([]);
   const user = JSON.parse(localStorage.getItem('user') || '{}');
 
-  useEffect(() => { loadData(); }, []);
+  useEffect(() => { loadData(); projectApi.list().then(r => setProjects(r.data.data || [])).catch(() => {}); }, []);
   const loadData = async () => {
     setLoading(true);
     try { const res = await reimbursementApi.list(); setData(res.data.data || []); } catch {} finally { setLoading(false); }
@@ -30,8 +37,17 @@ export default function Reimbursements() {
   const handleSubmit = async () => {
     const values = await form.validateFields();
     if (values.expense_date) values.expense_date = values.expense_date.format('YYYY-MM-DD');
-    try { await reimbursementApi.create(values); message.success('提交成功'); setModalOpen(false); form.resetFields(); loadData(); }
-    catch (e: any) { message.error(e.response?.data?.detail || '操作失败'); }
+    values.vouchers = vouchers;
+    try {
+      if (editingReimburse) {
+        await reimbursementApi.update(editingReimburse.reimburse_id, values);
+        message.success('更新成功');
+      } else {
+        await reimbursementApi.create(values);
+        message.success('提交成功');
+      }
+      setModalOpen(false); form.resetFields(); setVouchers([]); setEditingReimburse(null); loadData();
+    } catch (e: any) { message.error(e.response?.data?.detail || '操作失败'); }
   };
 
   const handleAudit = async () => {
@@ -54,9 +70,13 @@ export default function Reimbursements() {
     { title: '金额', dataIndex: 'amount_with_tax', key: 'amount_with_tax', render: (v: number) => `¥${v?.toLocaleString() || 0}` },
     { title: '事由', dataIndex: 'description', key: 'description', ellipsis: true },
     { title: '状态', dataIndex: 'status', key: 'status', render: (s: string) => { const st = statusMap[s]; return st ? <Tag color={st.color}>{st.label}</Tag> : s; } },
+    { title: '凭证', key: 'vouchers', width: 80, render: (_: any, record: any) => <Button type="link" size="small" onClick={() => setFileRecord(record)}>{record.vouchers?.length ? `${record.vouchers.length}个` : '管理'}</Button> },
     { title: '发生日期', dataIndex: 'expense_date', key: 'expense_date' },
-    { title: '操作', key: 'action', width: 200, render: (_: any, r: any) => (
+    { title: '操作', key: 'action', width: 250, render: (_: any, r: any) => (
       <Space>
+        {['pending_review', 'rejected'].includes(r.status) && (r.applicant_id === user.user_id || user.role === 'admin') &&
+          <Button size="small" onClick={() => { setEditingReimburse(r); setVouchers(r.vouchers || []); form.setFieldsValue({ ...r, expense_date: r.expense_date ? dayjs(r.expense_date) : null }); setModalOpen(true); }}>编辑</Button>
+        }
         {(r.status === 'pending_review' || r.status === 'manager_approved') && ['admin', 'project_manager', 'finance'].includes(user.role) &&
           <Button size="small" icon={<CheckOutlined />} onClick={() => { setAuditModal(r); auditForm.resetFields(); }}>审核</Button>
         }
@@ -71,18 +91,28 @@ export default function Reimbursements() {
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
         <Title level={4} style={{ margin: 0 }}>报销管理</Title>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => { form.resetFields(); setModalOpen(true); }}>提交报销</Button>
+        <Button type="primary" icon={<PlusOutlined />} onClick={() => { form.resetFields(); setVouchers([]); setEditingReimburse(null); setModalOpen(true); }}>提交报销</Button>
       </div>
       <Table columns={columns} dataSource={data} rowKey="reimburse_id" loading={loading} size="middle" scroll={{ x: 1000 }} />
 
-      <Modal title="提交报销申请" open={modalOpen} onOk={handleSubmit} onCancel={() => setModalOpen(false)} width={600}>
+      <Modal title={editingReimburse ? '编辑报销申请' : '提交报销申请'} open={modalOpen} onOk={handleSubmit} onCancel={() => setModalOpen(false)} width={600}>
         <Form form={form} layout="vertical">
           <Form.Item name="expense_type" label="报销类型" rules={[{ required: true }]}>
             <Select options={Object.entries(expenseTypes).map(([k, v]) => ({ value: k, label: v }))} />
           </Form.Item>
+          <Form.Item name="project_id" label="关联项目" rules={[{ required: true, message: '请选择关联项目' }]}>
+            <Select placeholder="选择关联项目" showSearch optionFilterProp="label"
+              options={projects.map(p => ({ value: p.project_id, label: p.project_name }))}
+              onChange={(v) => { const p = projects.find(x => x.project_id === v); if (p) form.setFieldValue('project_name', p.project_name); }}
+            />
+          </Form.Item>
+          <Form.Item name="project_name" hidden><Input /></Form.Item>
           <Form.Item name="amount_with_tax" label="报销金额(含税)" rules={[{ required: true }]}><InputNumber style={{ width: '100%' }} /></Form.Item>
           <Form.Item name="description" label="报销事由" rules={[{ required: true }]}><Input.TextArea rows={3} /></Form.Item>
           <Form.Item name="expense_date" label="发生日期" rules={[{ required: true }]}><DatePicker style={{ width: '100%' }} /></Form.Item>
+          <Form.Item label="报销凭证（发票/收据）">
+            <FileUpload entityType="reimbursement" entityId={editingReimburse?.reimburse_id || 'new'} files={vouchers} onChange={setVouchers} maxCount={5} />
+          </Form.Item>
         </Form>
       </Modal>
 
@@ -105,6 +135,7 @@ export default function Reimbursements() {
           <Form.Item name="payment_time" label="付款时间" rules={[{ required: true }]}><DatePicker showTime style={{ width: '100%' }} /></Form.Item>
         </Form>
       </Modal>
+      {fileRecord && <FileManager open={!!fileRecord} title={`${fileRecord?.applicant_name || ''} 报销凭证`} entityType="reimbursement" entityId={fileRecord?.reimburse_id || ''} files={fileRecord?.vouchers || []} canEdit={['pending_review', 'rejected'].includes(fileRecord?.status) && (fileRecord?.applicant_id === user.user_id || user.role === 'admin')} onSave={async (files) => { await reimbursementApi.update(fileRecord.reimburse_id, { vouchers: files }); loadData(); }} onClose={() => setFileRecord(null)} />}
     </div>
   );
 }

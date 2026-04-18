@@ -46,6 +46,7 @@ class ContractUpdate(BaseModel):
     remarks: Optional[str] = None
     special_terms: Optional[str] = None
     penalty_clause: Optional[str] = None
+    attachments: Optional[List[dict]] = None
 
 
 class ContractQuery(BaseModel):

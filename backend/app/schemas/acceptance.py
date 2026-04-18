@@ -26,6 +26,8 @@ class AcceptanceUpdate(BaseModel):
     result: Optional[str] = None
     rectification_requirements: Optional[str] = None
     rectification_deadline: Optional[str] = None
+    basic_docs: Optional[List[dict]] = None
+    engineering_docs: Optional[List[dict]] = None
 
 
 class AcceptanceOut(BaseModel):

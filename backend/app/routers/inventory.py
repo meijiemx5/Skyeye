@@ -9,6 +9,7 @@ from ..models.inventory import MaterialModel, StockRecordModel
 from ..schemas.inventory import MaterialCreate, MaterialUpdate, StockInCreate, StockOutCreate, StockAdjustmentCreate
 from ..schemas.common import APIResponse
 from ..utils.auth import get_current_user, require_roles
+from ..services.audit import log_action
 
 router = APIRouter(prefix="/api/inventory", tags=["库存管理"])
 
@@ -150,7 +151,7 @@ def create_material(req: MaterialCreate, current_user: dict = Depends(require_ro
     m.created_by = current_user["user_id"]
     _update_stock_status(m)
     m.save()
-    
+    log_action(current_user["user_id"], f"{current_user['username']}({current_user['display_name']})", "create", "material", material_id, f"创建物料: {req.material_name}")
     return APIResponse(message="物料创建成功", data={"material_id": material_id})
 
 
@@ -170,6 +171,7 @@ def update_material(material_id: str, req: MaterialUpdate, current_user: dict = 
     m.updated_at = datetime.now(timezone.utc).isoformat()
     m.updated_by = current_user["user_id"]
     m.save()
+    log_action(current_user["user_id"], f"{current_user['username']}({current_user['display_name']})", "update", "material", material_id, f"更新物料: {m.material_name}")
     return APIResponse(message="物料更新成功")
 
 
@@ -180,6 +182,7 @@ def delete_material(material_id: str, current_user: dict = Depends(require_roles
         m = MaterialModel.get(MaterialModel.make_pk(material_id), MaterialModel.make_sk())
     except DoesNotExist:
         raise HTTPException(status_code=404, detail="物料不存在")
+    log_action(current_user["user_id"], f"{current_user['username']}({current_user['display_name']})", "delete", "material", material_id, f"删除物料: {m.material_name}")
     m.delete()
     return APIResponse(message="物料删除成功")
 
@@ -238,6 +241,7 @@ def stock_in(req: StockInCreate, current_user: dict = Depends(require_roles("adm
     material.updated_at = now
     material.save()
     
+    log_action(current_user["user_id"], f"{current_user['username']}({current_user['display_name']})", "stock_in", "inventory", record_id, f"入库: {material.material_name} x{req.quantity}")
     return APIResponse(message="入库成功", data={"record_id": record_id})
 
 
@@ -267,6 +271,7 @@ def stock_out(req: StockOutCreate, current_user: dict = Depends(require_roles("a
     r.material_name = material.material_name
     r.record_type = "out"
     r.quantity = req.quantity
+    r.unit_price = material.unit_price  # save current unit price for cost calculation
     r.project_id = req.project_id
     r.project_name = req.project_name
     r.requester_name = req.requester_name
@@ -283,6 +288,7 @@ def stock_out(req: StockOutCreate, current_user: dict = Depends(require_roles("a
     material.updated_at = now
     material.save()
     
+    log_action(current_user["user_id"], f"{current_user['username']}({current_user['display_name']})", "stock_out", "inventory", record_id, f"出库: {material.material_name} x{req.quantity} → {req.project_name or ''}")
     return APIResponse(message="出库成功", data={"record_id": record_id})
 
 
@@ -321,4 +327,5 @@ def stock_adjustment(req: StockAdjustmentCreate, current_user: dict = Depends(re
     material.updated_at = now
     material.save()
     
+    log_action(current_user["user_id"], f"{current_user['username']}({current_user['display_name']})", "adjustment", "inventory", record_id, f"盘点: {material.material_name} {material.stock_quantity}→{req.actual_quantity}")
     return APIResponse(message="盘点调整成功", data={"record_id": record_id})

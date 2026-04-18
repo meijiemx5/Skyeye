@@ -9,6 +9,7 @@ from ..models.project import ProjectModel
 from ..schemas.project import ProjectCreate, ProjectUpdate, ProjectOut
 from ..schemas.common import APIResponse
 from ..utils.auth import get_current_user, require_roles
+from ..services.audit import log_action
 
 router = APIRouter(prefix="/api/projects", tags=["项目管理"])
 
@@ -104,7 +105,7 @@ def create_project(req: ProjectCreate, current_user: dict = Depends(require_role
     project.updated_at = now
     project.created_by = current_user["user_id"]
     project.save()
-    
+    log_action(current_user["user_id"], f"{current_user['username']}({current_user['display_name']})", "create", "project", project_id, f"创建项目: {req.project_name}")
     return APIResponse(message="项目创建成功", data={"project_id": project_id})
 
 
@@ -126,7 +127,7 @@ def update_project(project_id: str, req: ProjectUpdate, current_user: dict = Dep
     project.updated_at = datetime.now(timezone.utc).isoformat()
     project.updated_by = current_user["user_id"]
     project.save()
-    
+    log_action(current_user["user_id"], f"{current_user['username']}({current_user['display_name']})", "update", "project", project_id, f"更新项目: {project.project_name}")
     return APIResponse(message="项目更新成功")
 
 
@@ -138,5 +139,6 @@ def delete_project(project_id: str, current_user: dict = Depends(require_roles("
     except DoesNotExist:
         raise HTTPException(status_code=404, detail="项目不存在")
     
+    log_action(current_user["user_id"], f"{current_user['username']}({current_user['display_name']})", "delete", "project", project_id, f"删除项目: {project.project_name}")
     project.delete()
     return APIResponse(message="项目删除成功")

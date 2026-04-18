@@ -215,6 +215,8 @@ def create_user(req: UserCreate, current_user: dict = Depends(require_roles("adm
     user.created_by = current_user["user_id"]
     user.save()
     
+    from ..services.audit import log_action
+    log_action(current_user["user_id"], f"{current_user['username']}({current_user['display_name']})", "create", "user", user_id, f"创建用户: {req.username}({req.display_name}) 角色:{req.role}")
     return APIResponse(message="用户创建成功", data={"user_id": user_id})
 
 
@@ -237,6 +239,8 @@ def update_user(user_id: str, req: UserUpdate, current_user: dict = Depends(requ
     user.updated_by = current_user["user_id"]
     user.save()
     
+    from ..services.audit import log_action
+    log_action(current_user["user_id"], f"{current_user['username']}({current_user['display_name']})", "update", "user", user_id, f"更新用户: {user.username}")
     return APIResponse(message="用户更新成功")
 
 
@@ -255,6 +259,8 @@ def reset_password(user_id: str, current_user: dict = Depends(require_roles("adm
     user.updated_at = datetime.now(timezone.utc).isoformat()
     user.updated_by = current_user["user_id"]
     user.save()
+    from ..services.audit import log_action
+    log_action(current_user["user_id"], f"{current_user['username']}({current_user['display_name']})", "reset_password", "user", user_id, f"重置密码: {user.username}")
     return APIResponse(message=f"密码已重置为: {new_password}")
 
 
@@ -266,5 +272,7 @@ def delete_user(user_id: str, current_user: dict = Depends(require_roles("admin"
     except DoesNotExist:
         raise HTTPException(status_code=404, detail="用户不存在")
     
+    from ..services.audit import log_action
+    log_action(current_user["user_id"], f"{current_user['username']}({current_user['display_name']})", "delete", "user", user_id, f"删除用户: {user.username}")
     user.delete()
     return APIResponse(message="用户删除成功")

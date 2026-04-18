@@ -21,6 +21,7 @@ class ReimbursementCreate(BaseModel):
     expense_type: str  # material, travel, equipment_rental, other
     description: str
     expense_date: str
+    vouchers: Optional[List[dict]] = None
 
 
 class ReimbursementUpdate(BaseModel):
@@ -31,6 +32,7 @@ class ReimbursementUpdate(BaseModel):
     expense_type: Optional[str] = None
     description: Optional[str] = None
     expense_date: Optional[str] = None
+    vouchers: Optional[List[dict]] = None
 
 
 class ReimbursementAudit(BaseModel):
