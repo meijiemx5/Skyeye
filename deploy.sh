@@ -60,6 +60,13 @@ console.log(outputs['SkyeyeBackend']?.ApiUrl || '');
 
 echo "✅ Backend deployed. API URL: ${API_URL}"
 
+# Initialize admin user
+echo ""
+echo "📋 Step 4.1: Initializing admin user..."
+sleep 5  # Wait for Lambda cold start
+INIT_RESULT=$(curl -s -X POST "${API_URL}api/auth/init-admin" 2>/dev/null || echo '{"message":"init failed"}')
+echo "  ${INIT_RESULT}"
+
 # Build frontend with API URL
 echo ""
 echo "📋 Step 5: Building frontend..."

@@ -15,6 +15,40 @@ from ..utils.auth import (
 router = APIRouter(prefix="/api/auth", tags=["认证管理"])
 
 
+@router.post("/init-admin")
+def init_admin():
+    """Initialize default admin user if no users exist. Safe to call multiple times."""
+    from ..utils.auth import hash_password
+    from datetime import datetime, timezone
+    
+    users = list(UserModel.scan(
+        filter_condition=UserModel.entity_type == "user",
+        limit=1
+    ))
+    if users:
+        return APIResponse(message="管理员已存在，无需初始化", data={"exists": True})
+    
+    user_id = "admin001"
+    now = datetime.now(timezone.utc).isoformat()
+    admin = UserModel()
+    admin.PK = UserModel.make_pk(user_id)
+    admin.SK = UserModel.make_sk()
+    admin.GSI1PK = UserModel.make_gsi1pk("admin")
+    admin.GSI1SK = UserModel.make_gsi1sk(user_id)
+    admin.entity_type = "user"
+    admin.user_id = user_id
+    admin.username = "admin"
+    admin.display_name = "系统管理员"
+    admin.password_hash = hash_password("admin123")
+    admin.role = "admin"
+    admin.is_active = True
+    admin.login_fail_count = 0
+    admin.created_at = now
+    admin.updated_at = now
+    admin.save()
+    return APIResponse(message="管理员初始化成功", data={"username": "admin", "password": "admin123"})
+
+
 @router.post("/login", response_model=LoginResponse)
 def login(req: LoginRequest):
     """User login."""

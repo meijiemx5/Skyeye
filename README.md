@@ -116,6 +116,21 @@ API URL:      https://xxxxx.execute-api.us-east-1.amazonaws.com/api/
 Default Login: admin / admin123
 ```
 
+> 部署脚本会自动调用 `POST /api/auth/init-admin` 初始化管理员账号。
+
+### 手动初始化管理员
+
+如果部署后管理员未自动创建，可手动调用初始化接口：
+
+```bash
+# 替换为你的实际 API URL
+curl -X POST https://xxxxx.execute-api.us-east-1.amazonaws.com/api/api/auth/init-admin
+```
+
+返回：`{"message":"管理员初始化成功","data":{"username":"admin","password":"admin123"}}`
+
+> 此接口安全可重复调用：如果管理员已存在会返回 `{"message":"管理员已存在，无需初始化"}`
+
 ### 更新部署
 
 代码修改后，重新运行同一命令即可增量更新：
