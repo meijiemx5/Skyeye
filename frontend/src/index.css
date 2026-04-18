@@ -1,0 +1,61 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Make Ant Design Modal body scrollable when content is tall */
+.ant-modal .ant-modal-body {
+  max-height: 65vh;
+  overflow-y: auto;
+}
+
+/* Mobile responsive */
+@media (max-width: 768px) {
+  /* Tables scroll horizontally */
+  .ant-table-wrapper {
+    overflow-x: auto;
+  }
+  .ant-table {
+    min-width: 600px;
+  }
+  /* Stat cards stack */
+  .ant-row {
+    flex-wrap: wrap !important;
+  }
+  .ant-col {
+    flex: 0 0 50% !important;
+    max-width: 50% !important;
+    margin-bottom: 8px;
+  }
+  /* Modal full width on mobile */
+  .ant-modal {
+    max-width: calc(100vw - 32px) !important;
+    margin: 16px auto !important;
+  }
+  /* Title smaller on mobile */
+  h4.ant-typography {
+    font-size: 16px !important;
+  }
+  /* Login card responsive */
+  .ant-card {
+    max-width: calc(100vw - 32px);
+  }
+  /* Buttons wrap */
+  .ant-space-horizontal {
+    flex-wrap: wrap;
+  }
+}
+
+@media (max-width: 480px) {
+  .ant-col {
+    flex: 0 0 100% !important;
+    max-width: 100% !important;
+  }
+}

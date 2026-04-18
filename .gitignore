@@ -1,0 +1,29 @@
+# Dependencies
+node_modules/
+backend/.venv/
+__pycache__/
+*.pyc
+
+# Build output
+frontend/dist/
+infrastructure/cdk.out/
+infrastructure/dist/
+
+# Environment
+.env
+.env.local
+frontend/.env.production
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# CDK outputs
+cdk-outputs.json
+
+# Lambda package
+/tmp/skyeye-lambda.zip

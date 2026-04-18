@@ -1,0 +1,218 @@
+import { Typography, Table, Card, Collapse, Tag, Divider } from 'antd';
+import { CheckCircleFilled, CloseCircleFilled } from '@ant-design/icons';
+
+const { Title, Paragraph, Text } = Typography;
+
+const Yes = () => <CheckCircleFilled style={{ color: '#52c41a', fontSize: 16 }} />;
+const No = () => <CloseCircleFilled style={{ color: '#ff4d4f', fontSize: 16 }} />;
+
+const permissionData = [
+  { key: '1', module: '用户管理', sub: '创建/编辑/删除用户', admin: true, finance: false, pm: false, procurement: false, construction: false, warehouse: false },
+  { key: '2', module: '用户管理', sub: '重置密码', admin: true, finance: false, pm: false, procurement: false, construction: false, warehouse: false },
+  { key: '3', module: '用户管理', sub: '修改自己密码', admin: true, finance: true, pm: true, procurement: true, construction: true, warehouse: true },
+  { key: '4', module: '项目管理', sub: '创建/编辑项目', admin: true, finance: false, pm: true, procurement: false, construction: false, warehouse: false },
+  { key: '5', module: '项目管理', sub: '删除项目', admin: true, finance: false, pm: false, procurement: false, construction: false, warehouse: false },
+  { key: '6', module: '项目管理', sub: '查看项目列表', admin: true, finance: true, pm: true, procurement: true, construction: true, warehouse: true },
+  { key: '7', module: '合同管理', sub: '创建甲方合同', admin: true, finance: false, pm: true, procurement: false, construction: false, warehouse: false },
+  { key: '8', module: '合同管理', sub: '创建供应商合同', admin: true, finance: false, pm: false, procurement: true, construction: false, warehouse: false },
+  { key: '9', module: '合同管理', sub: '删除合同', admin: true, finance: false, pm: false, procurement: false, construction: false, warehouse: false },
+  { key: '10', module: '合同管理', sub: '查看合同', admin: true, finance: true, pm: true, procurement: true, construction: true, warehouse: false },
+  { key: '11', module: '报销管理', sub: '提交报销申请', admin: true, finance: true, pm: true, procurement: true, construction: true, warehouse: true },
+  { key: '12', module: '报销管理', sub: '主管审核', admin: true, finance: false, pm: true, procurement: false, construction: false, warehouse: false },
+  { key: '13', module: '报销管理', sub: '财务审核', admin: true, finance: true, pm: false, procurement: false, construction: false, warehouse: false },
+  { key: '14', module: '报销管理', sub: '付款操作', admin: true, finance: true, pm: false, procurement: false, construction: false, warehouse: false },
+  { key: '15', module: '验收资料', sub: '创建/编辑验收记录', admin: true, finance: false, pm: true, procurement: false, construction: false, warehouse: false },
+  { key: '16', module: '验收资料', sub: '查看验收资料', admin: true, finance: true, pm: true, procurement: true, construction: true, warehouse: true },
+  { key: '17', module: '库存管理', sub: '创建物料', admin: true, finance: false, pm: false, procurement: true, construction: false, warehouse: true },
+  { key: '18', module: '库存管理', sub: '入库/出库', admin: true, finance: false, pm: false, procurement: true, construction: false, warehouse: false },
+  { key: '19', module: '库存管理', sub: '盘点调整', admin: true, finance: false, pm: false, procurement: false, construction: false, warehouse: true },
+  { key: '20', module: '项目分析', sub: '查看总览分析', admin: true, finance: true, pm: true, procurement: false, construction: false, warehouse: false },
+  { key: '21', module: '项目分析', sub: '查看单项目分析', admin: true, finance: true, pm: true, procurement: true, construction: true, warehouse: true },
+  { key: '22', module: '操作日志', sub: '查看日志', admin: true, finance: false, pm: false, procurement: false, construction: false, warehouse: false },
+];
+
+const permColumns = [
+  { title: '模块', dataIndex: 'module', key: 'module', width: 100,
+    onCell: (_: any, index: number | undefined) => {
+      if (index === undefined) return {};
+      const data = permissionData;
+      if (index === 0 || data[index].module !== data[index - 1].module) {
+        let count = 1;
+        for (let i = index + 1; i < data.length && data[i].module === data[index].module; i++) count++;
+        return { rowSpan: count };
+      }
+      return { rowSpan: 0 };
+    }
+  },
+  { title: '操作', dataIndex: 'sub', key: 'sub' },
+  { title: '管理员', dataIndex: 'admin', key: 'admin', width: 80, align: 'center' as const, render: (v: boolean) => v ? <Yes /> : <No /> },
+  { title: '财务', dataIndex: 'finance', key: 'finance', width: 80, align: 'center' as const, render: (v: boolean) => v ? <Yes /> : <No /> },
+  { title: '项目负责人', dataIndex: 'pm', key: 'pm', width: 100, align: 'center' as const, render: (v: boolean) => v ? <Yes /> : <No /> },
+  { title: '采购', dataIndex: 'procurement', key: 'procurement', width: 80, align: 'center' as const, render: (v: boolean) => v ? <Yes /> : <No /> },
+  { title: '施工', dataIndex: 'construction', key: 'construction', width: 80, align: 'center' as const, render: (v: boolean) => v ? <Yes /> : <No /> },
+  { title: '仓库', dataIndex: 'warehouse', key: 'warehouse', width: 80, align: 'center' as const, render: (v: boolean) => v ? <Yes /> : <No /> },
+];
+
+const roleGuides = [
+  {
+    key: 'admin',
+    label: <span><Tag color="red">管理员</Tag> 使用指南</span>,
+    children: (
+      <div>
+        <Paragraph>管理员拥有系统最高权限，负责系统配置和用户管理。</Paragraph>
+        <Title level={5}>日常操作</Title>
+        <Paragraph>
+          <ul>
+            <li><b>用户管理</b>：左侧菜单 → 用户管理，可新建用户、分配角色、启用/禁用账号、重置密码</li>
+            <li><b>项目管理</b>：创建新项目，分配项目负责人，跟踪项目状态</li>
+            <li><b>合同管理</b>：查看和管理所有类型合同（甲方、供应商、施工）</li>
+            <li><b>报销审批</b>：可代替任何角色进行审核和付款操作</li>
+            <li><b>数据分析</b>：查看总览分析和单项目分析，监控公司运营状况</li>
+            <li><b>操作日志</b>：查看所有用户的操作记录，支持按类型和日期筛选</li>
+          </ul>
+        </Paragraph>
+        <Title level={5}>注意事项</Title>
+        <Paragraph>
+          <ul>
+            <li>首次部署后请立即修改默认密码（点击右上角用户名 → 修改密码）</li>
+            <li>为其他用户创建账号时请选择正确的角色</li>
+            <li>删除操作不可恢复，请谨慎执行</li>
+          </ul>
+        </Paragraph>
+      </div>
+    ),
+  },
+  {
+    key: 'finance',
+    label: <span><Tag color="blue">财务人员</Tag> 使用指南</span>,
+    children: (
+      <div>
+        <Paragraph>财务人员负责报销审核和付款操作。</Paragraph>
+        <Title level={5}>日常操作</Title>
+        <Paragraph>
+          <ul>
+            <li><b>报销审核</b>：左侧菜单 → 报销管理，查看"主管已审"状态的报销，点击"审核"进行财务审核</li>
+            <li><b>付款操作</b>：财务审核通过后，点击"付款"，填写付款金额、方式和时间</li>
+            <li><b>合同查看</b>：可查看所有合同的付款进度和金额信息</li>
+            <li><b>数据分析</b>：查看项目收入、成本和利润分析</li>
+          </ul>
+        </Paragraph>
+        <Title level={5}>报销审批流程</Title>
+        <Paragraph>
+          报销申请 → <Text strong>主管审核</Text> → <Text strong>财务审核（您）</Text> → <Text strong>付款（您）</Text> → 完成
+        </Paragraph>
+      </div>
+    ),
+  },
+  {
+    key: 'project_manager',
+    label: <span><Tag color="green">项目负责人</Tag> 使用指南</span>,
+    children: (
+      <div>
+        <Paragraph>项目负责人负责管理甲方合同、项目验收和报销审核。</Paragraph>
+        <Title level={5}>日常操作</Title>
+        <Paragraph>
+          <ul>
+            <li><b>项目管理</b>：创建和编辑自己负责的项目，更新项目状态和进度</li>
+            <li><b>甲方合同</b>：创建和管理甲方合同（与客户签订的合同）</li>
+            <li><b>报销审核</b>：审核团队成员的报销申请（第一级审核）</li>
+            <li><b>验收管理</b>：创建验收记录，上传验收资料，更新验收状态</li>
+            <li><b>项目分析</b>：查看自己项目的成本和利润分析</li>
+          </ul>
+        </Paragraph>
+      </div>
+    ),
+  },
+  {
+    key: 'procurement',
+    label: <span><Tag color="orange">采购专员</Tag> 使用指南</span>,
+    children: (
+      <div>
+        <Paragraph>采购专员负责供应商合同管理和库存入出库操作。</Paragraph>
+        <Title level={5}>日常操作</Title>
+        <Paragraph>
+          <ul>
+            <li><b>供应商合同</b>：创建和管理供应商采购合同</li>
+            <li><b>物料管理</b>：左侧菜单 → 库存管理，新增物料信息</li>
+            <li><b>入库操作</b>：采购物料到库后，点击"入库"按钮录入入库信息</li>
+            <li><b>出库操作</b>：项目领用物料时，点击"出库"按钮录入出库信息</li>
+            <li><b>库存查看</b>：查看库存预警，及时补充低库存物料</li>
+          </ul>
+        </Paragraph>
+      </div>
+    ),
+  },
+  {
+    key: 'construction',
+    label: <span><Tag color="cyan">施工人员</Tag> 使用指南</span>,
+    children: (
+      <div>
+        <Paragraph>施工人员可查看施工合同和提交报销申请。</Paragraph>
+        <Title level={5}>日常操作</Title>
+        <Paragraph>
+          <ul>
+            <li><b>查看合同</b>：左侧菜单 → 合同管理，查看与自己相关的施工合同</li>
+            <li><b>提交报销</b>：左侧菜单 → 报销管理 → 提交报销，填写报销信息并提交</li>
+            <li><b>查看报销进度</b>：在报销列表中查看自己提交的报销审批状态</li>
+            <li><b>修改报销</b>：被驳回的报销可修改后重新提交</li>
+          </ul>
+        </Paragraph>
+        <Title level={5}>报销提交流程</Title>
+        <Paragraph>
+          填写报销类型、金额、事由、日期 → 提交 → 等待主管审核 → 等待财务审核 → 等待付款
+        </Paragraph>
+      </div>
+    ),
+  },
+  {
+    key: 'warehouse',
+    label: <span><Tag color="purple">仓库管理员</Tag> 使用指南</span>,
+    children: (
+      <div>
+        <Paragraph>仓库管理员负责库存盘点和物料信息维护。</Paragraph>
+        <Title level={5}>日常操作</Title>
+        <Paragraph>
+          <ul>
+            <li><b>物料管理</b>：新增和编辑物料基本信息（名称、规格、仓库位置等）</li>
+            <li><b>库存盘点</b>：左侧菜单 → 库存管理 → 点击"盘点"按钮</li>
+            <li><b>盘点操作</b>：输入物料ID、实际盘点数量和调整原因，系统自动计算差异并更新库存</li>
+            <li><b>库存预警</b>：关注库存预警提醒，及时通知采购专员补货</li>
+          </ul>
+        </Paragraph>
+      </div>
+    ),
+  },
+];
+
+export default function UserGuide() {
+  return (
+    <div>
+      <Title level={4}>📖 用户指南</Title>
+      <Paragraph type="secondary">本指南包含各角色的权限说明和操作指引，帮助您快速上手系统。</Paragraph>
+
+      <Divider />
+      <Title level={5}>一、权限矩阵</Title>
+      <Paragraph type="secondary">不同角色拥有不同的操作权限，<CheckCircleFilled style={{ color: '#52c41a' }} /> 表示有权限，<CloseCircleFilled style={{ color: '#ff4d4f' }} /> 表示无权限。</Paragraph>
+      <Table columns={permColumns} dataSource={permissionData} rowKey="key" size="small"
+        pagination={false} bordered scroll={{ x: 800 }} style={{ marginBottom: 24 }} />
+
+      <Divider />
+      <Title level={5}>二、各角色操作指南</Title>
+      <Paragraph type="secondary">请展开您对应角色的指南查看详细操作说明。</Paragraph>
+      <Collapse items={roleGuides} defaultActiveKey={[]} style={{ marginTop: 16 }} />
+
+      <Divider />
+      <Title level={5}>三、通用操作</Title>
+      <Card size="small">
+        <Paragraph>
+          <ul>
+            <li><b>修改密码</b>：点击右上角用户名 → 修改密码</li>
+            <li><b>退出登录</b>：点击右上角用户名 → 退出登录</li>
+            <li><b>侧边栏折叠</b>：点击顶部左侧的折叠按钮可收起/展开侧边栏</li>
+            <li><b>数据筛选</b>：大部分列表页都支持按状态、类型等条件筛选</li>
+          </ul>
+        </Paragraph>
+      </Card>
+    </div>
+  );
+}
