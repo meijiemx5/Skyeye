@@ -80,18 +80,21 @@ export default function FileUpload({ entityType, entityId, files, onChange, maxC
   const handleView = async (file: FileInfo) => {
     try {
       const res = await uploadApi.getDownloadUrl(file.s3_key);
-      window.open(res.data.data.download_url, '_blank');
-    } catch {
-      message.error('获取查看链接失败');
+      const url = res.data.data.download_url;
+      // Use location.href as fallback for mobile
+      window.location.href = url;
+    } catch (e: any) {
+      message.error('获取查看链接失败: ' + (e.message || ''));
     }
   };
 
   const handleDownload = async (file: FileInfo) => {
     try {
       const res = await uploadApi.getDownloadUrl(file.s3_key, true);
-      window.open(res.data.data.download_url, '_blank');
-    } catch {
-      message.error('获取下载链接失败');
+      const url = res.data.data.download_url;
+      window.location.href = url;
+    } catch (e: any) {
+      message.error('获取下载链接失败: ' + (e.message || ''));
     }
   };
 

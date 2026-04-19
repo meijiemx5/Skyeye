@@ -130,7 +130,7 @@ export default function MainLayout() {
         <Header style={{ padding: '0 16px', background: colorBgContainer, display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #f0f0f0' }}>
           <Button type="text" icon={collapsed && !isMobile ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />} onClick={() => isMobile ? setDrawerOpen(true) : setCollapsed(!collapsed)} />
           <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? 6 : 12 }}>
-            {!isMobile && <Tag color="blue" style={{ margin: 0 }}>{roleLabels[user.role] || user.role}</Tag>}
+            <Tag color="blue" style={{ margin: 0, fontSize: isMobile ? 11 : 14 }}>{roleLabels[user.role] || user.role}</Tag>
             <Dropdown menu={{
               items: [
                 ...(isMobile ? [{ key: 'role', label: roleLabels[user.role] || user.role, disabled: true }] : []),
