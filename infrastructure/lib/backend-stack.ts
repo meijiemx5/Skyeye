@@ -3,8 +3,8 @@ import * as cdk from 'aws-cdk-lib';
 import { Construct } from 'constructs';
 import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
-import * as apigw from 'aws-cdk-lib/aws-apigateway';
 import * as s3 from 'aws-cdk-lib/aws-s3';
+import * as apigw from 'aws-cdk-lib/aws-apigateway';
 
 export class SkyeyeBackendStack extends cdk.Stack {
   /** API Gateway URL - exposed for frontend stack */
@@ -114,12 +114,13 @@ export class SkyeyeBackendStack extends cdk.Stack {
     attachmentsBucket.grantReadWrite(apiLambda);
 
     // ============================================================
-    // API Gateway
+    // API Gateway (REGIONAL - required for China regions)
     // ============================================================
     const api = new apigw.LambdaRestApi(this, 'SkyeyeApi', {
       restApiName: 'skyeye-api',
       handler: apiLambda,
       proxy: true,
+      endpointTypes: [apigw.EndpointType.REGIONAL],
       deployOptions: {
         stageName: 'api',
         throttlingRateLimit: 100,

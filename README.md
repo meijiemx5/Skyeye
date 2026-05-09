@@ -25,7 +25,7 @@
 | **后端** | Python 3.12 + FastAPI + PynamoDB 6 + Mangum |
 | **数据库** | DynamoDB（单表设计, PAY_PER_REQUEST, 2个GSI） |
 | **存储** | S3（附件存储, Presigned URL上传） |
-| **部署** | AWS CDK (TypeScript) + Lambda + API Gateway + CloudFront |
+| **部署** | AWS CDK (TypeScript) + Lambda + API Gateway (REGIONAL) + CloudFront |
 | **认证** | JWT Token（24h过期）+ SHA-256+Salt密码加密 |
 
 ## 项目结构
@@ -72,7 +72,7 @@ Skyeye/
 │   └── package.json
 ├── infrastructure/             # AWS CDK 基础设施
 │   ├── lib/
-│   │   ├── backend-stack.ts    # DynamoDB + Lambda + API GW + S3
+│   │   ├── backend-stack.ts    # DynamoDB + Lambda + API GW (REGIONAL) + S3
 │   │   └── frontend-stack.ts   # S3 + CloudFront
 │   └── package.json
 ├── docs/                       # 文档
@@ -112,7 +112,7 @@ Skyeye/
 ```
 🎉 Deployment Complete!
 Frontend URL: https://xxxxx.cloudfront.net
-API URL:      https://xxxxx.execute-api.us-east-1.amazonaws.com/api/
+API URL:      https://xxxxx.execute-api.{region}.amazonaws.com/api/
 Default Login: admin / admin123
 ```
 
@@ -124,7 +124,7 @@ Default Login: admin / admin123
 
 ```bash
 # 替换为你的实际 API URL
-curl -X POST https://xxxxx.execute-api.us-east-1.amazonaws.com/api/api/auth/init-admin
+curl -X POST https://xxxxx.execute-api.{region}.amazonaws.com/api/api/auth/init-admin
 ```
 
 返回：`{"message":"管理员初始化成功","data":{"username":"admin","password":"admin123"}}`
