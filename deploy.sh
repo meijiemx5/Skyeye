@@ -50,14 +50,15 @@ npx cdk bootstrap --profile "${AWS_PROFILE}" 2>/dev/null || true
 # Deploy backend stack first
 echo ""
 echo "📋 Step 4: Deploying backend (DynamoDB + Lambda + API Gateway + S3)..."
-npx cdk deploy SkyeyeBackend --profile "${AWS_PROFILE}" --require-approval never --outputs-file "${SCRIPT_DIR}/cdk-outputs.json"
+npx cdk deploy SkyeyeBackend --profile "${AWS_PROFILE}" --require-approval never --outputs-file "${SCRIPT_DIR}/cdk-backend-outputs.json"
 
 # Extract API URL from outputs
 API_URL=$(node -e "
 const fs = require('fs');
-const outputs = JSON.parse(fs.readFileSync('${SCRIPT_DIR}/cdk-outputs.json', 'utf8'));
-console.log(outputs['SkyeyeBackend']?.ApiUrl || '');
-" 2>/dev/null || echo "")
+const outputs = JSON.parse(fs.readFileSync('${SCRIPT_DIR}/cdk-backend-outputs.json', 'utf8'));
+const url = outputs['SkyeyeBackend']?.ApiUrl || '';
+console.log(url);
+" || echo "")
 
 echo "✅ Backend deployed. API URL: ${API_URL}"
 
@@ -80,14 +81,15 @@ npm run build
 echo ""
 echo "📋 Step 6: Deploying frontend (S3 + CloudFront)..."
 cd "${SCRIPT_DIR}/infrastructure"
-npx cdk deploy SkyeyeFrontend --profile "${AWS_PROFILE}" --require-approval never --outputs-file "${SCRIPT_DIR}/cdk-outputs.json"
+npx cdk deploy SkyeyeFrontend --profile "${AWS_PROFILE}" --require-approval never --outputs-file "${SCRIPT_DIR}/cdk-frontend-outputs.json"
 
 # Extract frontend URL
 SITE_URL=$(node -e "
 const fs = require('fs');
-const outputs = JSON.parse(fs.readFileSync('${SCRIPT_DIR}/cdk-outputs.json', 'utf8'));
-console.log(outputs['SkyeyeFrontend']?.SiteUrl || '');
-" 2>/dev/null || echo "")
+const outputs = JSON.parse(fs.readFileSync('${SCRIPT_DIR}/cdk-frontend-outputs.json', 'utf8'));
+const url = outputs['SkyeyeFrontend']?.SiteUrl || '';
+console.log(url);
+" || echo "")
 
 echo ""
 echo "============================================================"

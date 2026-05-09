@@ -24,3 +24,7 @@ Thumbs.db
 
 # CDK outputs
 cdk-outputs.json
+
+# CDK outputs
+cdk-*-outputs.json
+cdk-outputs.json
