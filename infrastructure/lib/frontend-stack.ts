@@ -31,6 +31,9 @@ export class SkyeyeFrontendStack extends cdk.Stack {
     const oai = new cloudfront.OriginAccessIdentity(this, 'OAI');
     siteBucket.grantRead(oai);
 
+    // Disable IPv6 for China regions (not supported)
+    const isChina = this.region.startsWith('cn-');
+
     const distribution = new cloudfront.Distribution(this, 'Distribution', {
       defaultBehavior: {
         origin: new origins.S3Origin(siteBucket, {
@@ -40,6 +43,7 @@ export class SkyeyeFrontendStack extends cdk.Stack {
         cachePolicy: cloudfront.CachePolicy.CACHING_OPTIMIZED,
       },
       defaultRootObject: 'index.html',
+      enableIpv6: !isChina,
       errorResponses: [
         {
           httpStatus: 403,
