@@ -6,11 +6,15 @@ import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as s3 from 'aws-cdk-lib/aws-s3';
 import * as apigw from 'aws-cdk-lib/aws-apigateway';
 
+interface SkyeyeBackendStackProps extends cdk.StackProps {
+  isChina: boolean;
+}
+
 export class SkyeyeBackendStack extends cdk.Stack {
   /** API Gateway URL - exposed for frontend stack */
   public readonly apiUrl: string;
 
-  constructor(scope: Construct, id: string, props?: cdk.StackProps) {
+  constructor(scope: Construct, id: string, props: SkyeyeBackendStackProps) {
     super(scope, id, props);
 
     // ============================================================

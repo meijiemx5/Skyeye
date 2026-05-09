@@ -44,6 +44,7 @@ fi
 echo ""
 echo "📋 Step 3: Bootstrapping CDK..."
 export CDK_DEFAULT_REGION="${AWS_REGION}"
+export SKYEYE_REGION="${AWS_REGION}"
 npx cdk bootstrap --profile "${AWS_PROFILE}" 2>/dev/null || true
 
 # Deploy backend stack first

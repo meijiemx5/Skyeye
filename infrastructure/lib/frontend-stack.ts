@@ -9,6 +9,7 @@ import * as origins from 'aws-cdk-lib/aws-cloudfront-origins';
 
 interface SkyeyeFrontendStackProps extends cdk.StackProps {
   apiUrl: string;
+  isChina: boolean;
 }
 
 export class SkyeyeFrontendStack extends cdk.Stack {
@@ -31,8 +32,8 @@ export class SkyeyeFrontendStack extends cdk.Stack {
     const oai = new cloudfront.OriginAccessIdentity(this, 'OAI');
     siteBucket.grantRead(oai);
 
-    // Disable IPv6 for China regions (not supported)
-    const isChina = this.region.startsWith('cn-');
+    // China region compatibility flags
+    const isChina = props.isChina;
 
     const distribution = new cloudfront.Distribution(this, 'Distribution', {
       defaultBehavior: {
@@ -40,8 +41,7 @@ export class SkyeyeFrontendStack extends cdk.Stack {
           originAccessIdentity: oai,
         }),
         viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
-        // China regions do not support managed CachePolicyId
-        ...(isChina ? {} : { cachePolicy: cloudfront.CachePolicy.CACHING_OPTIMIZED }),
+        ...(!isChina ? { cachePolicy: cloudfront.CachePolicy.CACHING_OPTIMIZED } : {}),
       },
       defaultRootObject: 'index.html',
       enableIpv6: !isChina,
@@ -60,6 +60,16 @@ export class SkyeyeFrontendStack extends cdk.Stack {
         },
       ],
     });
+
+    // China regions do not support CachePolicyId - use legacy ForwardedValues instead
+    if (isChina) {
+      const cfnDist = distribution.node.defaultChild as cloudfront.CfnDistribution;
+      cfnDist.addPropertyOverride('DistributionConfig.DefaultCacheBehavior.CachePolicyId', undefined);
+      cfnDist.addPropertyDeletionOverride('DistributionConfig.DefaultCacheBehavior.CachePolicyId');
+      cfnDist.addPropertyOverride('DistributionConfig.DefaultCacheBehavior.ForwardedValues', {
+        QueryString: false,
+      });
+    }
 
     // ============================================================
     // Deploy Frontend Build (if dist exists)
