@@ -52,13 +52,11 @@ echo ""
 echo "📋 Step 4: Deploying backend (DynamoDB + Lambda + API Gateway + S3)..."
 npx cdk deploy SkyeyeBackend --profile "${AWS_PROFILE}" --require-approval never --outputs-file "${SCRIPT_DIR}/cdk-backend-outputs.json"
 
-# Extract API URL from outputs
-API_URL=$(node -e "
-const fs = require('fs');
-const outputs = JSON.parse(fs.readFileSync('${SCRIPT_DIR}/cdk-backend-outputs.json', 'utf8'));
-const url = outputs['SkyeyeBackend']?.ApiUrl || '';
-console.log(url);
-" || echo "")
+# Extract API URL from outputs (fallback to CloudFormation query if outputs file is empty/missing)
+API_URL=$(node -p "JSON.parse(require('fs').readFileSync('${SCRIPT_DIR}/cdk-backend-outputs.json','utf8'))['SkyeyeBackend']['ApiUrl']" 2>/dev/null || echo "")
+if [ -z "${API_URL}" ]; then
+  API_URL=$(aws cloudformation describe-stacks --stack-name SkyeyeBackend --profile "${AWS_PROFILE}" --region "${AWS_REGION}" --query "Stacks[0].Outputs[?OutputKey=='ApiUrl'].OutputValue" --output text 2>/dev/null || echo "")
+fi
 
 echo "✅ Backend deployed. API URL: ${API_URL}"
 
@@ -83,13 +81,11 @@ echo "📋 Step 6: Deploying frontend (S3 + CloudFront)..."
 cd "${SCRIPT_DIR}/infrastructure"
 npx cdk deploy SkyeyeFrontend --profile "${AWS_PROFILE}" --require-approval never --outputs-file "${SCRIPT_DIR}/cdk-frontend-outputs.json"
 
-# Extract frontend URL
-SITE_URL=$(node -e "
-const fs = require('fs');
-const outputs = JSON.parse(fs.readFileSync('${SCRIPT_DIR}/cdk-frontend-outputs.json', 'utf8'));
-const url = outputs['SkyeyeFrontend']?.SiteUrl || '';
-console.log(url);
-" || echo "")
+# Extract frontend URL (fallback to CloudFormation query if outputs file is empty/missing)
+SITE_URL=$(node -p "JSON.parse(require('fs').readFileSync('${SCRIPT_DIR}/cdk-frontend-outputs.json','utf8'))['SkyeyeFrontend']['SiteUrl']" 2>/dev/null || echo "")
+if [ -z "${SITE_URL}" ]; then
+  SITE_URL=$(aws cloudformation describe-stacks --stack-name SkyeyeFrontend --profile "${AWS_PROFILE}" --region "${AWS_REGION}" --query "Stacks[0].Outputs[?OutputKey=='SiteUrl'].OutputValue" --output text 2>/dev/null || echo "")
+fi
 
 echo ""
 echo "============================================================"
