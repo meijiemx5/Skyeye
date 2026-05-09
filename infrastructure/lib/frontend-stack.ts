@@ -40,7 +40,8 @@ export class SkyeyeFrontendStack extends cdk.Stack {
           originAccessIdentity: oai,
         }),
         viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
-        cachePolicy: cloudfront.CachePolicy.CACHING_OPTIMIZED,
+        // China regions do not support managed CachePolicyId
+        ...(isChina ? {} : { cachePolicy: cloudfront.CachePolicy.CACHING_OPTIMIZED }),
       },
       defaultRootObject: 'index.html',
       enableIpv6: !isChina,
