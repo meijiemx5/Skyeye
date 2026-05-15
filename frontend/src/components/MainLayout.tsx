@@ -3,7 +3,7 @@ import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { Layout, Menu, Button, Dropdown, Avatar, theme, Modal, Form, Input, message, Tag, Drawer, Grid } from 'antd';
 import {
   DashboardOutlined, ProjectOutlined, FileTextOutlined, AccountBookOutlined,
-  CheckCircleOutlined, InboxOutlined, BarChartOutlined, UserOutlined,
+  CheckCircleOutlined, InboxOutlined, UserOutlined, TagsOutlined,
   LogoutOutlined, MenuFoldOutlined, MenuUnfoldOutlined, KeyOutlined, FileSearchOutlined, QuestionCircleOutlined,
 } from '@ant-design/icons';
 import { authApi } from '../api/client';
@@ -36,14 +36,15 @@ export default function MainLayout() {
     '/reimbursements': '报销管理',
     '/acceptances': '验收资料',
     '/inventory': '库存管理',
-    '/analysis': '项目分析',
+    '/reimburse-categories': '报销类型管理',
     '/users': '用户管理',
     '/audit-logs': '操作日志',
     '/guide': '用户指南',
   };
 
   useEffect(() => {
-    const pageTitle = pageTitles[location.pathname] || 'Skyeye';
+    const path = location.pathname.startsWith('/projects/') ? '/projects' : location.pathname;
+    const pageTitle = pageTitles[path] || 'Skyeye';
     document.title = `${pageTitle} - Skyeye`;
   }, [location.pathname]);
 
@@ -73,8 +74,8 @@ export default function MainLayout() {
     { key: '/reimbursements', icon: <AccountBookOutlined />, label: '报销管理' },
     { key: '/acceptances', icon: <CheckCircleOutlined />, label: '验收资料' },
     { key: '/inventory', icon: <InboxOutlined />, label: '库存管理' },
-    { key: '/analysis', icon: <BarChartOutlined />, label: '项目分析' },
     ...(user.role === 'admin' ? [
+      { key: '/reimburse-categories', icon: <TagsOutlined />, label: '报销类型管理' },
       { key: '/users', icon: <UserOutlined />, label: '用户管理' },
       { key: '/audit-logs', icon: <FileSearchOutlined />, label: '操作日志' },
     ] : []),
@@ -101,7 +102,7 @@ export default function MainLayout() {
       <Menu
         theme="dark"
         mode="inline"
-        selectedKeys={[location.pathname]}
+        selectedKeys={[location.pathname.startsWith('/projects/') ? '/projects' : location.pathname]}
         items={menuItems}
         onClick={handleMenuClick}
       />

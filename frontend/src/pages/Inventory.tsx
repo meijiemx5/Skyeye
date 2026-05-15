@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Table, Button, Modal, Form, Input, Select, InputNumber, DatePicker, Space, Tag, message, Typography, Popconfirm, Tabs, Card, Row, Col, Statistic } from 'antd';
 import { PlusOutlined, ImportOutlined, ExportOutlined, ToolOutlined } from '@ant-design/icons';
-import { inventoryApi, projectApi } from '../api/client';
+import { inventoryApi, projectApi, contractApi } from '../api/client';
 
 const { Title } = Typography;
 const categoryMap: Record<string, string> = { equipment: '弱电设备', cable: '线缆', accessory: '配件', tool: '工具', other: '其他' };
@@ -25,8 +25,17 @@ export default function Inventory() {
   const canDelete = user.role === 'admin';
 
   const [projects, setProjects] = useState<any[]>([]);
+  const [projectContracts, setProjectContracts] = useState<any[]>([]);
 
   useEffect(() => { loadAll(); projectApi.list().then(r => setProjects(r.data.data || [])).catch(() => {}); }, []);
+
+  const loadProjectContracts = async (project_id?: string) => {
+    if (!project_id) { setProjectContracts([]); return; }
+    try {
+      const res = await contractApi.list({ project_id });
+      setProjectContracts(res.data.data || []);
+    } catch { setProjectContracts([]); }
+  };
 
   const loadAll = async () => {
     setLoading(true);
@@ -82,6 +91,7 @@ export default function Inventory() {
     { title: '数量', dataIndex: 'quantity', key: 'quantity' },
     { title: '供应商/领用人', key: 'party', render: (_: any, r: any) => r.supplier_name || r.requester_name || '-' },
     { title: '项目', dataIndex: 'project_name', key: 'project_name' },
+    { title: '合同', dataIndex: 'contract_no', key: 'contract_no', render: (v: string) => v || '-' },
     { title: '日期', dataIndex: 'record_date', key: 'record_date' },
   ];
 
@@ -136,12 +146,45 @@ export default function Inventory() {
         <Form form={stockForm} layout="vertical">
           <Form.Item name="material_id" label="选择物料" rules={[{ required: true, message: '请选择物料' }]}>
             <Select placeholder="选择物料" showSearch optionFilterProp="label"
-              options={materials.map(m => ({ value: m.material_id, label: `${m.material_name}${m.specification ? ' - ' + m.specification : ''} (库存:${m.stock_quantity || 0})` }))}
+              options={materials.map(m => ({
+                value: m.material_id,
+                label: `${m.material_name}${m.specification ? ' - ' + m.specification : ''}${m.unit_price ? ' - ¥' + m.unit_price : ''} (库存:${m.stock_quantity || 0})`,
+              }))}
             />
           </Form.Item>
           {stockModal !== 'adjust' && <Form.Item name="quantity" label="数量" rules={[{ required: true }]}><InputNumber style={{ width: '100%' }} /></Form.Item>}
           {stockModal === 'adjust' && <Form.Item name="actual_quantity" label="实际数量" rules={[{ required: true }]}><InputNumber style={{ width: '100%' }} /></Form.Item>}
-          {stockModal === 'in' && <Form.Item name="supplier_name" label="供应商"><Input /></Form.Item>}
+          {stockModal === 'in' && (
+            <>
+              <Form.Item name="project_id" label="关联项目" tooltip="选择后可关联到该项目下的合同">
+                <Select allowClear placeholder="选择关联项目（可选）" showSearch optionFilterProp="label"
+                  options={projects.map(p => ({ value: p.project_id, label: p.project_name }))}
+                  onChange={(v) => {
+                    const p = projects.find(x => x.project_id === v);
+                    stockForm.setFieldValue('project_name', p?.project_name);
+                    stockForm.setFieldValue('contract_id', undefined);
+                    stockForm.setFieldValue('contract_no', undefined);
+                    loadProjectContracts(v);
+                  }}
+                />
+              </Form.Item>
+              <Form.Item name="project_name" hidden><Input /></Form.Item>
+              <Form.Item name="contract_id" label="关联合同" tooltip="先选项目后再选合同">
+                <Select allowClear placeholder={stockForm.getFieldValue('project_id') ? '选择关联合同（可选）' : '请先选择项目'}
+                  showSearch optionFilterProp="label"
+                  disabled={!stockForm.getFieldValue('project_id')}
+                  options={projectContracts.map(c => ({ value: c.contract_id, label: `${c.contract_no || ''} - ${c.contract_name || ''}` }))}
+                  onChange={(v) => {
+                    const c = projectContracts.find(x => x.contract_id === v);
+                    stockForm.setFieldValue('contract_no', c?.contract_no);
+                  }}
+                />
+              </Form.Item>
+              <Form.Item name="contract_no" hidden><Input /></Form.Item>
+              <Form.Item name="unit_price" label="入库单价（可选，覆盖物料单价）"><InputNumber style={{ width: '100%' }} /></Form.Item>
+              <Form.Item name="supplier_name" label="供应商"><Input /></Form.Item>
+            </>
+          )}
           {stockModal === 'out' && (
             <>
               <Form.Item name="project_id" label="关联项目" rules={[{ required: true, message: '请选择关联项目' }]}>

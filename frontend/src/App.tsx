@@ -5,11 +5,12 @@ import MainLayout from './components/MainLayout';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import Projects from './pages/Projects';
+import ProjectDetail from './pages/ProjectDetail';
 import Contracts from './pages/Contracts';
 import Reimbursements from './pages/Reimbursements';
+import ReimburseCategories from './pages/ReimburseCategories';
 import Acceptances from './pages/Acceptances';
 import Inventory from './pages/Inventory';
-import Analysis from './pages/Analysis';
 import Users from './pages/Users';
 import AuditLogs from './pages/AuditLogs';
 import UserGuide from './pages/UserGuide';
@@ -37,11 +38,12 @@ function App() {
           }>
             <Route index element={<Dashboard />} />
             <Route path="projects" element={<Projects />} />
+            <Route path="projects/:id" element={<ProjectDetail />} />
             <Route path="contracts" element={<Contracts />} />
             <Route path="reimbursements" element={<Reimbursements />} />
+            <Route path="reimburse-categories" element={<ReimburseCategories />} />
             <Route path="acceptances" element={<Acceptances />} />
             <Route path="inventory" element={<Inventory />} />
-            <Route path="analysis" element={<Analysis />} />
             <Route path="users" element={<Users />} />
             <Route path="audit-logs" element={<AuditLogs />} />
             <Route path="guide" element={<UserGuide />} />

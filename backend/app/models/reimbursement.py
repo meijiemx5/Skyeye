@@ -36,7 +36,9 @@ class ReimbursementModel(BaseModel):
     # 报销信息
     amount_with_tax = NumberAttribute()
     amount_without_tax = NumberAttribute(null=True)
-    expense_type = UnicodeAttribute()  # material, travel, equipment_rental, other
+    expense_type = UnicodeAttribute()  # category_id (sub if available, else parent); legacy values: material/travel/equipment_rental/other
+    expense_category_id = UnicodeAttribute(null=True)  # parent category id
+    expense_subcategory_id = UnicodeAttribute(null=True)  # child category id (nullable when no sub)
     description = UnicodeAttribute()  # 报销事由
     expense_date = UnicodeAttribute()  # 发生日期
     

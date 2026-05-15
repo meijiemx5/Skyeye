@@ -54,9 +54,11 @@ class StockRecordModel(BaseModel):
     # For stock-in
     supplier_name = UnicodeAttribute(null=True)
     
-    # For stock-out
+    # For stock-out / stock-in (project + contract binding)
     project_id = UnicodeAttribute(null=True)
     project_name = UnicodeAttribute(null=True)
+    contract_id = UnicodeAttribute(null=True)
+    contract_no = UnicodeAttribute(null=True)
     requester_name = UnicodeAttribute(null=True)
     purpose = UnicodeAttribute(null=True)
     

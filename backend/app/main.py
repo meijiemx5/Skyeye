@@ -5,7 +5,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .config import get_settings
-from .routers import auth, projects, contracts, reimbursements, acceptances, inventory, upload, analysis, audit_logs
+from .routers import auth, projects, contracts, reimbursements, acceptances, inventory, upload, analysis, audit_logs, reimburse_categories
 
 settings = get_settings()
 
@@ -34,6 +34,7 @@ app.include_router(inventory.router)
 app.include_router(upload.router)
 app.include_router(analysis.router)
 app.include_router(audit_logs.router)
+app.include_router(reimburse_categories.router)
 
 
 @app.get("/api/health")
@@ -86,3 +87,36 @@ def startup_event():
             print("✅ Default admin user created: admin / admin123")
     except Exception as e:
         print(f"⚠️ Admin user creation warning: {e}")
+
+    # Step 3: Seed default reimburse categories if empty
+    try:
+        from .models.reimburse_category import ReimburseCategoryModel
+        existing = list(ReimburseCategoryModel.scan(
+            filter_condition=ReimburseCategoryModel.entity_type == "reimburse_category", limit=1))
+        if not existing:
+            now = datetime.now(timezone.utc).isoformat()
+            seeds = [
+                ("material", "物料采购", None, 1, 10),
+                ("travel", "差旅费", None, 1, 20),
+                ("equipment_rental", "设备租赁", None, 1, 30),
+                ("other", "其他", None, 1, 99),
+            ]
+            for cid, name, parent, level, sort in seeds:
+                c = ReimburseCategoryModel()
+                c.PK = ReimburseCategoryModel.make_pk(cid)
+                c.SK = ReimburseCategoryModel.make_sk()
+                c.GSI1PK = ReimburseCategoryModel.make_gsi1pk(parent)
+                c.GSI1SK = ReimburseCategoryModel.make_gsi1sk(sort, cid)
+                c.entity_type = "reimburse_category"
+                c.category_id = cid
+                c.name = name
+                c.parent_id = parent
+                c.level = level
+                c.sort_order = sort
+                c.is_active = True
+                c.created_at = now
+                c.updated_at = now
+                c.save()
+            print("✅ Default reimburse categories seeded.")
+    except Exception as e:
+        print(f"⚠️ Reimburse category seeding warning: {e}")

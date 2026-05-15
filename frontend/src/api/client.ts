@@ -112,6 +112,15 @@ export const auditLogApi = {
   list: (params?: any) => client.get('/api/audit-logs', { params }),
 };
 
+// Reimburse Category API
+export const reimburseCategoryApi = {
+  tree: () => client.get('/api/reimburse-categories'),
+  flat: () => client.get('/api/reimburse-categories/flat'),
+  create: (data: any) => client.post('/api/reimburse-categories', data),
+  update: (id: string, data: any) => client.put(`/api/reimburse-categories/${id}`, data),
+  delete: (id: string) => client.delete(`/api/reimburse-categories/${id}`),
+};
+
 // Upload API
 export const uploadApi = {
   getUploadUrl: (params: any) => client.post('/api/upload/presigned-url', null, { params }),

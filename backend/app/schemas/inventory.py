@@ -57,6 +57,10 @@ class StockInCreate(BaseModel):
     quantity: float
     unit_price: Optional[float] = None
     supplier_name: Optional[str] = None
+    project_id: Optional[str] = None
+    project_name: Optional[str] = None
+    contract_id: Optional[str] = None
+    contract_no: Optional[str] = None
     record_date: str
 
 
@@ -87,6 +91,8 @@ class StockRecordOut(BaseModel):
     supplier_name: Optional[str] = None
     project_id: Optional[str] = None
     project_name: Optional[str] = None
+    contract_id: Optional[str] = None
+    contract_no: Optional[str] = None
     requester_name: Optional[str] = None
     purpose: Optional[str] = None
     system_quantity: Optional[float] = None

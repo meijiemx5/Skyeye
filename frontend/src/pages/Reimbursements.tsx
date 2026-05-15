@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react';
-import { Table, Button, Modal, Form, Input, Select, InputNumber, DatePicker, Space, Tag, message, Typography } from 'antd';
-import { PlusOutlined, CheckOutlined, DollarOutlined } from '@ant-design/icons';
-import { reimbursementApi, projectApi } from '../api/client';
+import { useEffect, useMemo, useState } from 'react';
+import { Table, Button, Modal, Form, Input, Select, InputNumber, DatePicker, Space, Tag, message, Typography, Row, Col } from 'antd';
+import { PlusOutlined, CheckOutlined, DollarOutlined, SearchOutlined, ReloadOutlined } from '@ant-design/icons';
+import { reimbursementApi, projectApi, authApi, reimburseCategoryApi } from '../api/client';
 import dayjs from 'dayjs';
 import FileUpload, { FileInfo } from '../components/FileUpload';
 import FileManager from '../components/FileManager';
@@ -11,7 +11,13 @@ const statusMap: Record<string, { label: string; color: string }> = {
   pending_review: { label: '待审核', color: 'orange' }, manager_approved: { label: '主管已审', color: 'blue' },
   finance_approved: { label: '财务已审', color: 'cyan' }, paid: { label: '已付款', color: 'green' }, rejected: { label: '已驳回', color: 'red' },
 };
-const expenseTypes: Record<string, string> = { material: '物料采购', travel: '差旅费', equipment_rental: '设备租赁', other: '其他' };
+const legacyTypeLabels: Record<string, string> = { material: '物料采购', travel: '差旅费', equipment_rental: '设备租赁', other: '其他' };
+
+interface CategoryNode {
+  category_id: string; name: string; parent_id?: string | null;
+  level: number; sort_order: number; is_active: boolean;
+  children?: CategoryNode[];
+}
 
 export default function Reimbursements() {
   const [data, setData] = useState<any[]>([]);
@@ -26,18 +32,68 @@ export default function Reimbursements() {
   const [auditForm] = Form.useForm();
   const [payForm] = Form.useForm();
   const [projects, setProjects] = useState<any[]>([]);
+  const [users, setUsers] = useState<any[]>([]);
+  const [categoryTree, setCategoryTree] = useState<CategoryNode[]>([]);
+  const [filters, setFilters] = useState<{ project_id?: string; applicant_id?: string; status?: string; keyword?: string }>({});
   const user = JSON.parse(localStorage.getItem('user') || '{}');
+  const canFilterByApplicant = ['admin', 'finance'].includes(user.role);
 
-  useEffect(() => { loadData(); projectApi.list().then(r => setProjects(r.data.data || [])).catch(() => {}); }, []);
-  const loadData = async () => {
+  const selectedCategoryId: string | undefined = Form.useWatch('expense_category_id', form);
+  const selectedCategory = useMemo(
+    () => categoryTree.find(c => c.category_id === selectedCategoryId),
+    [categoryTree, selectedCategoryId],
+  );
+
+  useEffect(() => {
+    loadData();
+    projectApi.list().then(r => setProjects(r.data.data || [])).catch(() => {});
+    reimburseCategoryApi.tree().then(r => setCategoryTree(r.data.data || [])).catch(() => {});
+    if (canFilterByApplicant) {
+      authApi.listUsers().then(r => setUsers(r.data.data || [])).catch(() => {});
+    }
+  }, []);
+
+  const loadData = async (overrides?: typeof filters) => {
     setLoading(true);
-    try { const res = await reimbursementApi.list(); setData(res.data.data || []); } catch {} finally { setLoading(false); }
+    try {
+      const params: any = { ...(overrides ?? filters) };
+      Object.keys(params).forEach(k => { if (!params[k]) delete params[k]; });
+      const res = await reimbursementApi.list(params);
+      setData(res.data.data || []);
+    } catch {} finally { setLoading(false); }
+  };
+
+  const renderExpenseLabel = (record: any) => {
+    const subId = record.expense_subcategory_id;
+    const catId = record.expense_category_id;
+    if (subId) {
+      const parent = categoryTree.find(c => c.category_id === catId);
+      const child = parent?.children?.find(c => c.category_id === subId);
+      if (child) return parent ? `${parent.name} / ${child.name}` : child.name;
+    }
+    if (catId) {
+      const parent = categoryTree.find(c => c.category_id === catId);
+      if (parent) return parent.name;
+    }
+    // legacy fallback
+    const t = record.expense_type;
+    return legacyTypeLabels[t] || categoryTree.find(c => c.category_id === t)?.name || t;
   };
 
   const handleSubmit = async () => {
     const values = await form.validateFields();
     if (values.expense_date) values.expense_date = values.expense_date.format('YYYY-MM-DD');
     values.vouchers = vouchers;
+
+    // Derive expense_type from sub if available, else parent
+    const subId = values.expense_subcategory_id;
+    const catId = values.expense_category_id;
+    values.expense_type = subId || catId;
+    if (!values.expense_type) {
+      message.error('请选择报销类型');
+      return;
+    }
+
     try {
       if (editingReimburse) {
         await reimbursementApi.update(editingReimburse.reimburse_id, values);
@@ -63,10 +119,25 @@ export default function Reimbursements() {
     catch (e: any) { message.error(e.response?.data?.detail || '操作失败'); }
   };
 
+  const openEdit = (r: any) => {
+    setEditingReimburse(r);
+    setVouchers(r.vouchers || []);
+    // Pre-fill cascaded fields. If new fields missing, try to map legacy expense_type to a parent id.
+    const catId = r.expense_category_id || (categoryTree.find(c => c.category_id === r.expense_type)?.category_id);
+    const subId = r.expense_subcategory_id;
+    form.setFieldsValue({
+      ...r,
+      expense_category_id: catId,
+      expense_subcategory_id: subId,
+      expense_date: r.expense_date ? dayjs(r.expense_date) : null,
+    });
+    setModalOpen(true);
+  };
+
   const columns = [
     { title: '报销人', dataIndex: 'applicant_name', key: 'applicant_name' },
     { title: '项目', dataIndex: 'project_name', key: 'project_name' },
-    { title: '类型', dataIndex: 'expense_type', key: 'expense_type', render: (t: string) => expenseTypes[t] || t },
+    { title: '类型', key: 'expense_type', render: (_: any, r: any) => renderExpenseLabel(r) },
     { title: '金额', dataIndex: 'amount_with_tax', key: 'amount_with_tax', render: (v: number) => `¥${v?.toLocaleString() || 0}` },
     { title: '事由', dataIndex: 'description', key: 'description', ellipsis: true },
     { title: '状态', dataIndex: 'status', key: 'status', render: (s: string) => { const st = statusMap[s]; return st ? <Tag color={st.color}>{st.label}</Tag> : s; } },
@@ -75,7 +146,7 @@ export default function Reimbursements() {
     { title: '操作', key: 'action', width: 250, render: (_: any, r: any) => (
       <Space>
         {['pending_review', 'rejected'].includes(r.status) && (r.applicant_id === user.user_id || user.role === 'admin') &&
-          <Button size="small" onClick={() => { setEditingReimburse(r); setVouchers(r.vouchers || []); form.setFieldsValue({ ...r, expense_date: r.expense_date ? dayjs(r.expense_date) : null }); setModalOpen(true); }}>编辑</Button>
+          <Button size="small" onClick={() => openEdit(r)}>编辑</Button>
         }
         {(r.status === 'pending_review' || r.status === 'manager_approved') && ['admin', 'project_manager', 'finance'].includes(user.role) &&
           <Button size="small" icon={<CheckOutlined />} onClick={() => { setAuditModal(r); auditForm.resetFields(); }}>审核</Button>
@@ -93,13 +164,65 @@ export default function Reimbursements() {
         <Title level={4} style={{ margin: 0 }}>报销管理</Title>
         <Button type="primary" icon={<PlusOutlined />} onClick={() => { form.resetFields(); setVouchers([]); setEditingReimburse(null); setModalOpen(true); }}>提交报销</Button>
       </div>
+
+      <Row gutter={8} style={{ marginBottom: 12 }}>
+        <Col xs={24} sm={12} md={6}>
+          <Select allowClear placeholder="按项目过滤" style={{ width: '100%' }}
+            showSearch optionFilterProp="label"
+            value={filters.project_id}
+            options={projects.map(p => ({ value: p.project_id, label: p.project_name }))}
+            onChange={(v) => setFilters({ ...filters, project_id: v })} />
+        </Col>
+        {canFilterByApplicant && (
+          <Col xs={24} sm={12} md={5}>
+            <Select allowClear placeholder="按报销人过滤" style={{ width: '100%' }}
+              showSearch optionFilterProp="label"
+              value={filters.applicant_id}
+              options={users.map(u => ({ value: u.user_id, label: `${u.display_name || u.username}` }))}
+              onChange={(v) => setFilters({ ...filters, applicant_id: v })} />
+          </Col>
+        )}
+        <Col xs={24} sm={12} md={4}>
+          <Select allowClear placeholder="状态" style={{ width: '100%' }}
+            value={filters.status}
+            options={Object.entries(statusMap).map(([k, v]) => ({ value: k, label: v.label }))}
+            onChange={(v) => setFilters({ ...filters, status: v })} />
+        </Col>
+        <Col xs={24} sm={12} md={5}>
+          <Input.Search allowClear placeholder="搜索事由/项目/报销人"
+            value={filters.keyword}
+            onChange={(e) => setFilters({ ...filters, keyword: e.target.value })}
+            onSearch={() => loadData()} />
+        </Col>
+        <Col xs={24} sm={24} md={4}>
+          <Space>
+            <Button icon={<SearchOutlined />} type="primary" onClick={() => loadData()}>查询</Button>
+            <Button icon={<ReloadOutlined />} onClick={() => { setFilters({}); loadData({}); }}>重置</Button>
+          </Space>
+        </Col>
+      </Row>
+
       <Table columns={columns} dataSource={data} rowKey="reimburse_id" loading={loading} size="middle" scroll={{ x: 1000 }} />
 
       <Modal title={editingReimburse ? '编辑报销申请' : '提交报销申请'} open={modalOpen} onOk={handleSubmit} onCancel={() => setModalOpen(false)} width={600}>
         <Form form={form} layout="vertical">
-          <Form.Item name="expense_type" label="报销类型" rules={[{ required: true }]}>
-            <Select options={Object.entries(expenseTypes).map(([k, v]) => ({ value: k, label: v }))} />
-          </Form.Item>
+          <Row gutter={12}>
+            <Col span={selectedCategory?.children?.length ? 12 : 24}>
+              <Form.Item name="expense_category_id" label="报销类型（大类）" rules={[{ required: true, message: '请选择大类' }]}>
+                <Select placeholder="选择大类" showSearch optionFilterProp="label"
+                  options={categoryTree.filter(c => c.is_active).map(c => ({ value: c.category_id, label: c.name }))}
+                  onChange={() => form.setFieldValue('expense_subcategory_id', undefined)} />
+              </Form.Item>
+            </Col>
+            {!!selectedCategory?.children?.length && (
+              <Col span={12}>
+                <Form.Item name="expense_subcategory_id" label="子类">
+                  <Select allowClear placeholder="选择子类" showSearch optionFilterProp="label"
+                    options={(selectedCategory.children || []).filter(c => c.is_active).map(c => ({ value: c.category_id, label: c.name }))} />
+                </Form.Item>
+              </Col>
+            )}
+          </Row>
           <Form.Item name="project_id" label="关联项目" rules={[{ required: true, message: '请选择关联项目' }]}>
             <Select placeholder="选择关联项目" showSearch optionFilterProp="label"
               options={projects.map(p => ({ value: p.project_id, label: p.project_name }))}

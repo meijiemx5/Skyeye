@@ -3,6 +3,10 @@ import { Upload, Button, message, List, Space, Popconfirm } from 'antd';
 import { UploadOutlined, FileOutlined, DeleteOutlined, DownloadOutlined, EyeOutlined } from '@ant-design/icons';
 import { uploadApi } from '../api/client';
 import axios from 'axios';
+import dayjs from 'dayjs';
+
+export const MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024;
+export const MAX_FILE_SIZE_LABEL = '50MB';
 
 export interface FileInfo {
   file_id: string;
@@ -31,6 +35,11 @@ export default function FileUpload({ entityType, entityId, files, onChange, maxC
     if (!entityId) {
       message.warning('请先保存记录后再上传附件');
       onError(new Error('no entity id'));
+      return;
+    }
+    if (file.size > MAX_FILE_SIZE_BYTES) {
+      message.error(`文件大小不能超过 ${MAX_FILE_SIZE_LABEL}（当前 ${(file.size / 1024 / 1024).toFixed(1)}MB）`);
+      onError(new Error('file too large'));
       return;
     }
     setUploading(true);
@@ -111,7 +120,7 @@ export default function FileUpload({ entityType, entityId, files, onChange, maxC
         disabled={disabled || uploading || files.length >= maxCount}
       >
         <Button icon={<UploadOutlined />} loading={uploading} disabled={disabled || files.length >= maxCount}>
-          {uploading ? '上传中...' : '上传附件'}
+          {uploading ? '上传中...' : `上传附件（单文件 ≤ ${MAX_FILE_SIZE_LABEL}）`}
         </Button>
       </Upload>
       {files.length > 0 && (
@@ -121,10 +130,13 @@ export default function FileUpload({ entityType, entityId, files, onChange, maxC
           dataSource={files}
           renderItem={(file) => (
             <List.Item style={{ padding: '4px 0' }}>
-              <Space>
+              <Space wrap size={4}>
                 <FileOutlined />
                 <span style={{ fontSize: 13 }}>{file.file_name}</span>
                 <span style={{ fontSize: 12, color: '#999' }}>({(file.file_size / 1024).toFixed(1)} KB)</span>
+                {file.upload_time && (
+                  <span style={{ fontSize: 12, color: '#999' }}>· 上传 {dayjs(file.upload_time).format('YYYY-MM-DD HH:mm')}</span>
+                )}
               </Space>
               <Space>
                 {isViewable(file.file_name) && <Button type="link" size="small" icon={<EyeOutlined />} onClick={() => handleView(file)}>查看</Button>}

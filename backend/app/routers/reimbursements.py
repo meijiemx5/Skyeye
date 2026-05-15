@@ -27,6 +27,8 @@ def _reimburse_to_dict(r):
         "amount_with_tax": r.amount_with_tax,
         "amount_without_tax": r.amount_without_tax,
         "expense_type": r.expense_type,
+        "expense_category_id": r.expense_category_id,
+        "expense_subcategory_id": r.expense_subcategory_id,
         "description": r.description,
         "expense_date": r.expense_date,
         "status": r.status,
@@ -63,18 +65,28 @@ def list_reimbursements(
     status: Optional[str] = Query(None),
     project_id: Optional[str] = Query(None),
     expense_type: Optional[str] = Query(None),
+    applicant_id: Optional[str] = Query(None),
+    keyword: Optional[str] = Query(None),
     current_user: dict = Depends(get_current_user)
 ):
     """List reimbursements."""
     results = list(ReimbursementModel.scan(filter_condition=ReimbursementModel.entity_type == "reimbursement"))
-    
+
     if status:
         results = [r for r in results if r.status == status]
     if project_id:
         results = [r for r in results if r.project_id == project_id]
     if expense_type:
-        results = [r for r in results if r.expense_type == expense_type]
-    
+        results = [r for r in results if r.expense_type == expense_type or r.expense_category_id == expense_type or r.expense_subcategory_id == expense_type]
+    if applicant_id:
+        results = [r for r in results if r.applicant_id == applicant_id]
+    if keyword:
+        kw = keyword.lower()
+        results = [r for r in results if
+                   kw in (r.description or "").lower()
+                   or kw in (r.project_name or "").lower()
+                   or kw in (r.applicant_name or "").lower()]
+
     # Role-based filtering
     role = current_user["role"]
     uid = current_user["user_id"]
@@ -121,6 +133,8 @@ def create_reimbursement(req: ReimbursementCreate, current_user: dict = Depends(
     r.amount_with_tax = req.amount_with_tax
     r.amount_without_tax = req.amount_without_tax
     r.expense_type = req.expense_type
+    r.expense_category_id = req.expense_category_id
+    r.expense_subcategory_id = req.expense_subcategory_id
     r.description = req.description
     r.expense_date = req.expense_date
     

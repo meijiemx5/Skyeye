@@ -18,7 +18,9 @@ class ReimbursementCreate(BaseModel):
     project_name: Optional[str] = None
     amount_with_tax: float
     amount_without_tax: Optional[float] = None
-    expense_type: str  # material, travel, equipment_rental, other
+    expense_type: str  # category_id (sub if any else parent); legacy: material/travel/...
+    expense_category_id: Optional[str] = None
+    expense_subcategory_id: Optional[str] = None
     description: str
     expense_date: str
     vouchers: Optional[List[dict]] = None
@@ -30,6 +32,8 @@ class ReimbursementUpdate(BaseModel):
     amount_with_tax: Optional[float] = None
     amount_without_tax: Optional[float] = None
     expense_type: Optional[str] = None
+    expense_category_id: Optional[str] = None
+    expense_subcategory_id: Optional[str] = None
     description: Optional[str] = None
     expense_date: Optional[str] = None
     vouchers: Optional[List[dict]] = None
@@ -55,6 +59,8 @@ class ReimbursementOut(BaseModel):
     amount_with_tax: float
     amount_without_tax: Optional[float] = None
     expense_type: str
+    expense_category_id: Optional[str] = None
+    expense_subcategory_id: Optional[str] = None
     description: str
     expense_date: str
     status: str

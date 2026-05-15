@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Table, Button, Modal, Form, Input, Select, DatePicker, Space, Tag, message, Popconfirm, Typography } from 'antd';
-import { PlusOutlined } from '@ant-design/icons';
+import { PlusOutlined, EyeOutlined } from '@ant-design/icons';
+import { useNavigate } from 'react-router-dom';
 import { projectApi } from '../api/client';
 import dayjs from 'dayjs';
 
@@ -16,6 +17,7 @@ export default function Projects() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<any>(null);
   const [form] = Form.useForm();
+  const navigate = useNavigate();
   const user = JSON.parse(localStorage.getItem('user') || '{}');
   const canEdit = ['admin', 'project_manager'].includes(user.role);
   const canDelete = user.role === 'admin';
@@ -43,18 +45,20 @@ export default function Projects() {
   };
 
   const columns = [
-    { title: '项目名称', dataIndex: 'project_name', key: 'project_name' },
+    { title: '项目名称', dataIndex: 'project_name', key: 'project_name',
+      render: (name: string, r: any) => <a onClick={() => navigate(`/projects/${r.project_id}`)}>{name}</a> },
     { title: '客户', dataIndex: 'client_name', key: 'client_name' },
     { title: '负责人', dataIndex: 'project_manager_name', key: 'project_manager_name' },
     { title: '状态', dataIndex: 'status', key: 'status', render: (s: string) => { const st = statusMap[s]; return st ? <Tag color={st.color}>{st.label}</Tag> : s; } },
     { title: '开始日期', dataIndex: 'start_date', key: 'start_date' },
     { title: '结束日期', dataIndex: 'end_date', key: 'end_date' },
-    ...(canEdit || canDelete ? [{ title: '操作', key: 'action', render: (_: any, record: any) => (
+    { title: '操作', key: 'action', width: 240, render: (_: any, record: any) => (
       <Space>
+        <Button size="small" icon={<EyeOutlined />} onClick={() => navigate(`/projects/${record.project_id}`)}>详情</Button>
         {canEdit && <Button size="small" onClick={() => { setEditing(record); form.setFieldsValue({ ...record, start_date: record.start_date ? dayjs(record.start_date) : null, end_date: record.end_date ? dayjs(record.end_date) : null }); setModalOpen(true); }}>编辑</Button>}
         {canDelete && <Popconfirm title="确定删除?" onConfirm={() => handleDelete(record.project_id)}><Button size="small" danger>删除</Button></Popconfirm>}
       </Space>
-    )}] : []),
+    )},
   ];
 
   return (

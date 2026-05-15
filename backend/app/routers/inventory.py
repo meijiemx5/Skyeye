@@ -32,7 +32,8 @@ def _record_to_dict(r):
         "material_name": r.material_name, "record_type": r.record_type,
         "quantity": r.quantity, "unit_price": r.unit_price,
         "supplier_name": r.supplier_name, "project_id": r.project_id,
-        "project_name": r.project_name, "requester_name": r.requester_name,
+        "project_name": r.project_name, "contract_id": r.contract_id,
+        "contract_no": r.contract_no, "requester_name": r.requester_name,
         "purpose": r.purpose, "system_quantity": r.system_quantity,
         "actual_quantity": r.actual_quantity, "adjustment_reason": r.adjustment_reason,
         "record_date": r.record_date, "created_at": r.created_at,
@@ -193,6 +194,7 @@ def delete_material(material_id: str, current_user: dict = Depends(require_roles
 def list_stock_records(
     material_id: Optional[str] = Query(None),
     record_type: Optional[str] = Query(None),
+    project_id: Optional[str] = Query(None),
     current_user: dict = Depends(get_current_user)
 ):
     """List stock records."""
@@ -201,6 +203,8 @@ def list_stock_records(
         results = [r for r in results if r.material_id == material_id]
     if record_type:
         results = [r for r in results if r.record_type == record_type]
+    if project_id:
+        results = [r for r in results if r.project_id == project_id]
     data = [_record_to_dict(r) for r in results]
     return APIResponse(data=data, total=len(data))
 
@@ -219,6 +223,9 @@ def stock_in(req: StockInCreate, current_user: dict = Depends(require_roles("adm
     r = StockRecordModel()
     r.PK = StockRecordModel.make_pk(req.material_id)
     r.SK = StockRecordModel.make_sk(record_id)
+    if req.project_id:
+        r.GSI2PK = StockRecordModel.make_gsi2pk(req.project_id)
+        r.GSI2SK = f"STOCK#{record_id}"
     r.entity_type = "stock_record"
     r.record_id = record_id
     r.material_id = req.material_id
@@ -227,12 +234,16 @@ def stock_in(req: StockInCreate, current_user: dict = Depends(require_roles("adm
     r.quantity = req.quantity
     r.unit_price = req.unit_price
     r.supplier_name = req.supplier_name
+    r.project_id = req.project_id
+    r.project_name = req.project_name
+    r.contract_id = req.contract_id
+    r.contract_no = req.contract_no
     r.record_date = req.record_date
     r.created_at = now
     r.updated_at = now
     r.created_by = current_user["user_id"]
     r.save()
-    
+
     # Update material stock
     material.stock_quantity = (material.stock_quantity or 0) + req.quantity
     if req.unit_price:
@@ -240,8 +251,8 @@ def stock_in(req: StockInCreate, current_user: dict = Depends(require_roles("adm
     _update_stock_status(material)
     material.updated_at = now
     material.save()
-    
-    log_action(current_user["user_id"], f"{current_user['username']}({current_user['display_name']})", "stock_in", "inventory", record_id, f"入库: {material.material_name} x{req.quantity}")
+
+    log_action(current_user["user_id"], f"{current_user['username']}({current_user['display_name']})", "stock_in", "inventory", record_id, f"入库: {material.material_name} x{req.quantity} {('→ ' + req.project_name) if req.project_name else ''}")
     return APIResponse(message="入库成功", data={"record_id": record_id})
 
 

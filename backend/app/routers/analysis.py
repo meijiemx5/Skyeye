@@ -28,8 +28,9 @@ def project_analysis(project_id: str, current_user: dict = Depends(get_current_u
     # Acceptance docs for this project
     acceptances = [a for a in AcceptanceDocModel.scan(filter_condition=AcceptanceDocModel.entity_type == "acceptance") if a.project_id == project_id]
     
-    # Stock records for this project
-    stock_records = [r for r in StockRecordModel.scan(filter_condition=StockRecordModel.entity_type == "stock_record") if r.project_id == project_id and r.record_type == "out"]
+    # Stock records for this project (count both stock-in tied to project and stock-out)
+    stock_records = [r for r in StockRecordModel.scan(filter_condition=StockRecordModel.entity_type == "stock_record")
+                     if r.project_id == project_id and r.record_type in ("in", "out")]
     
     # Build material price lookup for records missing unit_price
     material_prices = {}
@@ -133,7 +134,7 @@ def overall_analysis(current_user: dict = Depends(require_roles("admin", "financ
     
     # Load stock records for material cost
     stock_records = list(StockRecordModel.scan(filter_condition=StockRecordModel.entity_type == "stock_record"))
-    stock_out_records = [r for r in stock_records if r.record_type == "out"]
+    stock_out_records = [r for r in stock_records if r.record_type in ("in", "out")]
 
     # Per-project summary
     project_summaries = []
