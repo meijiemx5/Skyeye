@@ -96,7 +96,7 @@ export default function MainLayout() {
 
   const siderMenu = (
     <>
-      <div style={{ height: 64, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: collapsed && !isMobile ? 16 : 20, fontWeight: 'bold', background: '#001529' }}>
+      <div style={{ height: 64, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: collapsed && !isMobile ? 16 : 20, fontWeight: 'bold', background: 'linear-gradient(135deg, #1e3a8a 0%, #0f172a 70%)', borderBottom: '1px solid rgba(148,163,184,0.14)', letterSpacing: 0.5 }}>
         {collapsed && !isMobile ? '👁' : '👁 Skyeye'}
       </div>
       <Menu
@@ -109,6 +109,8 @@ export default function MainLayout() {
     </>
   );
 
+  const currentTitle = pageTitles[location.pathname.startsWith('/projects/') ? '/projects' : location.pathname] || 'Skyeye';
+
   return (
     <Layout style={{ minHeight: '100vh' }}>
       {isMobile ? (
@@ -117,7 +119,7 @@ export default function MainLayout() {
           open={drawerOpen}
           onClose={() => setDrawerOpen(false)}
           width={220}
-          bodyStyle={{ padding: 0, background: '#001529' }}
+          bodyStyle={{ padding: 0, background: '#0f172a' }}
           headerStyle={{ display: 'none' }}
         >
           {siderMenu}
@@ -128,8 +130,11 @@ export default function MainLayout() {
         </Sider>
       )}
       <Layout>
-        <Header style={{ padding: '0 16px', background: colorBgContainer, display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #f0f0f0' }}>
-          <Button type="text" icon={collapsed && !isMobile ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />} onClick={() => isMobile ? setDrawerOpen(true) : setCollapsed(!collapsed)} />
+        <Header style={{ padding: '0 16px', background: colorBgContainer, display: 'flex', alignItems: 'center', justifyContent: 'space-between', boxShadow: '0 1px 4px rgba(15,23,42,0.06)', position: 'relative', zIndex: 10 }}>
+          <div style={{ display: 'flex', alignItems: 'center' }}>
+            <Button type="text" icon={collapsed && !isMobile ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />} onClick={() => isMobile ? setDrawerOpen(true) : setCollapsed(!collapsed)} />
+            {!isMobile && <span style={{ fontSize: 16, fontWeight: 600, color: '#1e293b', marginLeft: 4 }}>{currentTitle}</span>}
+          </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? 6 : 12 }}>
             <Tag color="blue" style={{ margin: 0, fontSize: isMobile ? 11 : 14 }}>{roleLabels[user.role] || user.role}</Tag>
             <Dropdown menu={{
@@ -140,13 +145,13 @@ export default function MainLayout() {
               ]
             }}>
               <div style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8 }}>
-                <Avatar icon={<UserOutlined />} size="small" />
+                <Avatar icon={<UserOutlined />} size="small" style={{ backgroundColor: '#2563eb' }} />
                 {!isMobile && <span>{user.display_name || user.username}</span>}
               </div>
             </Dropdown>
           </div>
         </Header>
-        <Content style={{ margin: isMobile ? 8 : 16, padding: isMobile ? 12 : 24, background: colorBgContainer, borderRadius: 8, minHeight: 280, overflow: 'auto' }}>
+        <Content style={{ margin: isMobile ? 8 : 16, padding: isMobile ? 12 : 24, background: colorBgContainer, borderRadius: 12, minHeight: 280, overflow: 'auto', boxShadow: '0 1px 3px rgba(15,23,42,0.06)' }}>
           <Outlet />
         </Content>
       </Layout>

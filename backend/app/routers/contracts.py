@@ -34,6 +34,8 @@ def _contract_to_dict(c):
         "sign_date": c.sign_date,
         "amount_with_tax": c.amount_with_tax,
         "amount_without_tax": c.amount_without_tax,
+        "invoice_amount": c.invoice_amount,
+        "invoice_date": c.invoice_date,
         "paid_amount": c.paid_amount or 0,
         "work_start_date": c.work_start_date,
         "work_end_date": c.work_end_date,
@@ -193,6 +195,8 @@ def create_contract(req: ContractCreate, current_user: dict = Depends(require_ro
     c.sign_date = req.sign_date
     c.amount_with_tax = req.amount_with_tax
     c.amount_without_tax = req.amount_without_tax
+    c.invoice_amount = req.invoice_amount
+    c.invoice_date = req.invoice_date
     c.paid_amount = 0
     c.work_start_date = req.work_start_date
     c.work_end_date = req.work_end_date

@@ -18,6 +18,8 @@ class ContractCreate(BaseModel):
     sign_date: Optional[str] = None
     amount_with_tax: Optional[float] = None
     amount_without_tax: Optional[float] = None
+    invoice_amount: Optional[float] = None
+    invoice_date: Optional[str] = None
     work_start_date: Optional[str] = None
     work_end_date: Optional[str] = None
     payment_nodes: List[PaymentNodeSchema] = []
@@ -40,6 +42,8 @@ class ContractUpdate(BaseModel):
     amount_with_tax: Optional[float] = None
     amount_without_tax: Optional[float] = None
     paid_amount: Optional[float] = None
+    invoice_amount: Optional[float] = None
+    invoice_date: Optional[str] = None
     work_start_date: Optional[str] = None
     work_end_date: Optional[str] = None
     payment_nodes: Optional[List[PaymentNodeSchema]] = None
@@ -80,6 +84,8 @@ class ContractOut(BaseModel):
     amount_with_tax: Optional[float] = None
     amount_without_tax: Optional[float] = None
     paid_amount: float = 0
+    invoice_amount: Optional[float] = None
+    invoice_date: Optional[str] = None
     work_start_date: Optional[str] = None
     work_end_date: Optional[str] = None
     payment_nodes: List[PaymentNodeSchema] = []
