@@ -9,6 +9,11 @@ frontend/dist/
 infrastructure/cdk.out/
 infrastructure/dist/
 
+# swe-loop artifacts
+sandbox/
+loop.run.yaml
+.pytest_cache/
+
 # Environment
 .env
 .env.local
