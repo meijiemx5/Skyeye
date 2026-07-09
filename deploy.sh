@@ -12,12 +12,26 @@ set -e
 # https://ruianwy.site) so the SPA is same-origin with the API (/api/*) and
 # avoids the China execute-api block. If omitted, the raw API Gateway URL is
 # used (correct for Global; will NOT work for China's default endpoint).
+#
+# iam_cert_id (optional, 4th arg): IAM server-certificate id for the custom
+# domain. When both site_origin and iam_cert_id are given, CDK attaches the
+# domain alias + IAM cert to CloudFront, so a redeploy no longer wipes a
+# manually-attached alias/cert. Example:
+#   ./deploy.sh skyeye cn-northwest-1 https://ruianwy.site ASCARF4GALIVNP3ZRZS2J
 # ============================================================
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 AWS_PROFILE="${1:-default}"
 AWS_REGION="${2:-us-east-1}"
 SITE_ORIGIN="${3:-}"
+IAM_CERT_ID="${4:-}"
+
+# Pass the custom-domain config to CDK (bin/app.ts reads these). Derived from
+# site_origin (strip scheme/trailing slash) so CDK owns the alias + cert.
+if [ -n "${SITE_ORIGIN}" ]; then
+  export SKYEYE_SITE_DOMAIN="$(echo "${SITE_ORIGIN}" | sed -E 's#^https?://##; s#/$##')"
+fi
+[ -n "${IAM_CERT_ID}" ] && export SKYEYE_SITE_IAM_CERT_ID="${IAM_CERT_ID}"
 
 echo "============================================================"
 echo "  👁 Skyeye - 信息化弱电公司管理系统"

@@ -14,6 +14,10 @@ interface SkyeyeFrontendStackProps extends cdk.StackProps {
   /** API Gateway stage name (becomes the API origin path) */
   apiStage: string;
   isChina: boolean;
+  /** Optional custom domain (ICP-filed) to serve the site from, e.g. ruianwy.site */
+  domainName?: string;
+  /** IAM server-certificate id for the custom domain (China CloudFront uses IAM certs) */
+  iamCertId?: string;
 }
 
 export class SkyeyeFrontendStack extends cdk.Stack {
@@ -114,6 +118,20 @@ export class SkyeyeFrontendStack extends cdk.Stack {
       cfnDist.addPropertyOverride('DistributionConfig.CacheBehaviors.0.MinTTL', 0);
       cfnDist.addPropertyOverride('DistributionConfig.CacheBehaviors.0.DefaultTTL', 0);
       cfnDist.addPropertyOverride('DistributionConfig.CacheBehaviors.0.MaxTTL', 0);
+    }
+
+    // Custom domain + IAM certificate (e.g. the ICP-filed domain in China).
+    // Declaring them here means CDK owns the alias/cert, so a redeploy no
+    // longer wipes a manually-attached one. China CloudFront uses IAM server
+    // certificates (referenced by id), applied via a low-level override.
+    if (props.domainName && props.iamCertId) {
+      const cfnDist = distribution.node.defaultChild as cloudfront.CfnDistribution;
+      cfnDist.addPropertyOverride('DistributionConfig.Aliases', [props.domainName]);
+      cfnDist.addPropertyOverride('DistributionConfig.ViewerCertificate', {
+        IamCertificateId: props.iamCertId,
+        SslSupportMethod: 'sni-only',
+        MinimumProtocolVersion: 'TLSv1.2_2021',
+      });
     }
 
     // ============================================================
