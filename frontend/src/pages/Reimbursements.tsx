@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Table, Button, Modal, Form, Input, Select, InputNumber, DatePicker, Space, Tag, message, Typography, Row, Col } from 'antd';
+import { Table, Button, Modal, Form, Input, Select, InputNumber, DatePicker, Space, Tag, message, Typography, Row, Col, Popconfirm } from 'antd';
 import { PlusOutlined, CheckOutlined, DollarOutlined, SearchOutlined, ReloadOutlined } from '@ant-design/icons';
 import { reimbursementApi, projectApi, authApi, reimburseCategoryApi } from '../api/client';
 import dayjs from 'dayjs';
@@ -37,6 +37,7 @@ export default function Reimbursements() {
   const [filters, setFilters] = useState<{ project_id?: string; applicant_id?: string; status?: string; keyword?: string }>({});
   const user = JSON.parse(localStorage.getItem('user') || '{}');
   const canFilterByApplicant = ['admin', 'finance'].includes(user.role);
+  const canDelete = user.role === 'admin';
 
   const selectedCategoryId: string | undefined = Form.useWatch('expense_category_id', form);
   const selectedCategory = useMemo(
@@ -119,10 +120,15 @@ export default function Reimbursements() {
     catch (e: any) { message.error(e.response?.data?.detail || '操作失败'); }
   };
 
+  const handleDelete = async (id: string) => {
+    try { await reimbursementApi.delete(id); message.success('删除成功'); loadData(); }
+    catch (e: any) { message.error(e.response?.data?.detail || '删除失败'); }
+  };
+
   const openEdit = (r: any) => {
     setEditingReimburse(r);
     setVouchers(r.vouchers || []);
-    // Pre-fill cascaded fields. If new fields missing, try to map legacy expense_type to a parent id.
+    // Pre-fill cascaded fields; if new fields missing, map legacy expense_type to a parent id.
     const catId = r.expense_category_id || (categoryTree.find(c => c.category_id === r.expense_type)?.category_id);
     const subId = r.expense_subcategory_id;
     form.setFieldsValue({
@@ -154,6 +160,7 @@ export default function Reimbursements() {
         {r.status === 'finance_approved' && ['admin', 'finance'].includes(user.role) &&
           <Button size="small" type="primary" icon={<DollarOutlined />} onClick={() => { setPayModal(r); payForm.setFieldsValue({ payment_amount: r.amount_with_tax }); }}>付款</Button>
         }
+        {canDelete && <Popconfirm title="确定删除该报销记录?" onConfirm={() => handleDelete(r.reimburse_id)}><Button size="small" danger>删除</Button></Popconfirm>}
       </Space>
     )},
   ];
