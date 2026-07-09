@@ -27,9 +27,7 @@ frontend/.env.production
 .DS_Store
 Thumbs.db
 
-# CDK outputs
+# CDK outputs (incl. region-scoped, e.g. cdk-backend-outputs.us-east-1.json)
 cdk-outputs.json
-
-# CDK outputs
 cdk-*-outputs.json
-cdk-outputs.json
+cdk-*-outputs.*.json
