@@ -20,10 +20,17 @@ export default function Contracts() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<any>(null);
   const [filterType, setFilterType] = useState<string>('');
+  const [filterProject, setFilterProject] = useState<string>('');
+  const [filterKeyword, setFilterKeyword] = useState<string>('');
+  const [appliedKeyword, setAppliedKeyword] = useState<string>('');
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
+  const [total, setTotal] = useState(0);
   const [projects, setProjects] = useState<any[]>([]);
   const [attachments, setAttachments] = useState<FileInfo[]>([]);
   const [fileRecord, setFileRecord] = useState<any>(null);
   const [payRecord, setPayRecord] = useState<any>(null);
+  const [detailRecord, setDetailRecord] = useState<any>(null);
   const [form] = Form.useForm();
   const [payForm] = Form.useForm();
   const user = JSON.parse(localStorage.getItem('user') || '{}');
@@ -31,7 +38,8 @@ export default function Contracts() {
   const canPay = ['admin', 'finance'].includes(user.role);
   const canDelete = user.role === 'admin';
 
-  useEffect(() => { loadData(); loadStats(); loadProjects(); }, [filterType]);
+  useEffect(() => { loadStats(); loadProjects(); }, []);
+  useEffect(() => { loadData(); }, [filterType, filterProject, appliedKeyword, page, pageSize]);
 
   const loadProjects = async () => {
     try { const res = await projectApi.list(); setProjects(res.data.data || []); } catch {}
@@ -39,7 +47,10 @@ export default function Contracts() {
 
   const loadData = async () => {
     setLoading(true);
-    try { const res = await contractApi.list({ contract_type: filterType || undefined }); setData(res.data.data || []); } catch {} finally { setLoading(false); }
+    try {
+      const res = await contractApi.list({ contract_type: filterType || undefined, project_id: filterProject || undefined, keyword: appliedKeyword || undefined, page, page_size: pageSize });
+      setData(res.data.data || []); setTotal(res.data.total || 0);
+    } catch {} finally { setLoading(false); }
   };
 
   const loadStats = async () => {
@@ -51,6 +62,7 @@ export default function Contracts() {
     if (values.sign_date) values.sign_date = values.sign_date.format('YYYY-MM-DD');
     if (values.work_start_date) values.work_start_date = values.work_start_date.format('YYYY-MM-DD');
     if (values.work_end_date) values.work_end_date = values.work_end_date.format('YYYY-MM-DD');
+    if (values.invoice_date) values.invoice_date = values.invoice_date.format('YYYY-MM-DD');
     values.attachments = attachments;
     try {
       if (editing) { await contractApi.update(editing.contract_id, values); message.success('更新成功'); }
@@ -70,13 +82,15 @@ export default function Contracts() {
     { title: '类型', dataIndex: 'contract_type', key: 'contract_type', render: (t: string) => typeMap[t] || t },
     { title: '合同主体', dataIndex: 'party_name', key: 'party_name' },
     { title: '金额(含税)', dataIndex: 'amount_with_tax', key: 'amount_with_tax', render: (v: number) => v ? `¥${v.toLocaleString()}` : '-' },
-    { title: '已付款', key: 'paid_amount', render: (_: any, r: any) => <Space><span>{r.paid_amount ? `¥${r.paid_amount.toLocaleString()}` : '¥0'}</span>{canPay && <Button type="link" size="small" icon={<DollarOutlined />} onClick={() => { setPayRecord(r); payForm.resetFields(); }}>付款</Button>}</Space> },
+    { title: '发票金额', dataIndex: 'invoice_amount', key: 'invoice_amount', render: (v: number) => v ? `¥${v.toLocaleString()}` : '-' },
+    { title: '开票日期', dataIndex: 'invoice_date', key: 'invoice_date' },
+    { title: '已付款', key: 'paid_amount', render: (_: any, r: any) => <Space><Button type="link" size="small" style={{ padding: 0 }} onClick={() => setDetailRecord(r)}>{r.paid_amount ? `¥${r.paid_amount.toLocaleString()}` : '¥0'}</Button>{canPay && <Button type="link" size="small" icon={<DollarOutlined />} onClick={() => { setPayRecord(r); payForm.resetFields(); }}>付款</Button>}</Space> },
     { title: '状态', dataIndex: 'status', key: 'status', render: (s: string) => { const st = statusMap[s]; return st ? <Tag color={st.color}>{st.label}</Tag> : s; } },
     { title: '附件', key: 'attachments', width: 80, render: (_: any, record: any) => <Button type="link" size="small" onClick={() => setFileRecord(record)}>{record.attachments?.length ? `${record.attachments.length}个` : '管理'}</Button> },
     { title: '签订日期', dataIndex: 'sign_date', key: 'sign_date' },
     ...(canCreate || canDelete ? [{ title: '操作', key: 'action', width: 150, render: (_: any, record: any) => (
       <Space>
-        {canCreate && <Button size="small" onClick={() => { setEditing(record); setAttachments(record.attachments || []); form.setFieldsValue({ ...record, sign_date: record.sign_date ? dayjs(record.sign_date) : null, work_start_date: record.work_start_date ? dayjs(record.work_start_date) : null, work_end_date: record.work_end_date ? dayjs(record.work_end_date) : null }); setModalOpen(true); }}>编辑</Button>}
+        {canCreate && <Button size="small" onClick={() => { setEditing(record); setAttachments(record.attachments || []); form.setFieldsValue({ ...record, sign_date: record.sign_date ? dayjs(record.sign_date) : null, work_start_date: record.work_start_date ? dayjs(record.work_start_date) : null, work_end_date: record.work_end_date ? dayjs(record.work_end_date) : null, invoice_date: record.invoice_date ? dayjs(record.invoice_date) : null }); setModalOpen(true); }}>编辑</Button>}
         {canDelete && <Popconfirm title="确定删除?" onConfirm={() => handleDelete(record.contract_id)}><Button size="small" danger>删除</Button></Popconfirm>}
       </Space>
     )}] : []),
@@ -95,12 +109,17 @@ export default function Contracts() {
       )}
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
         <Space>
-          <Select value={filterType} onChange={setFilterType} style={{ width: 200 }} allowClear placeholder="按类型筛选"
+          <Select value={filterType} onChange={(v) => { setPage(1); setFilterType(v || ''); }} style={{ width: 160 }} allowClear placeholder="按类型筛选"
             options={[{ value: '', label: '全部' }, ...Object.entries(typeMap).map(([k, v]) => ({ value: k, label: v }))]} />
+          <Select value={filterProject || undefined} onChange={(v) => { setPage(1); setFilterProject(v || ''); }} style={{ width: 200 }} allowClear showSearch optionFilterProp="label" placeholder="按项目筛选"
+            options={projects.map(p => ({ value: p.project_id, label: p.project_name }))} />
+          <Input.Search value={filterKeyword} allowClear placeholder="搜索合同名称/编号/主体" style={{ width: 220 }}
+            onChange={(e) => setFilterKeyword(e.target.value)} onSearch={(v) => { setPage(1); setFilterKeyword(v); setAppliedKeyword(v); }} />
         </Space>
         {canCreate && <Button type="primary" icon={<PlusOutlined />} onClick={() => { setEditing(null); form.resetFields(); setAttachments([]); setModalOpen(true); }}>新建合同</Button>}
       </div>
-      <Table columns={columns} dataSource={data} rowKey="contract_id" loading={loading} size="middle" scroll={{ x: 1200 }} />
+      <Table columns={columns} dataSource={data} rowKey="contract_id" loading={loading} size="middle" scroll={{ x: 1200 }}
+        pagination={{ current: page, pageSize, total, showSizeChanger: true, showTotal: (t) => `共 ${t} 条`, onChange: (p, ps) => { setPage(p); setPageSize(ps); } }} />
       <Modal title={editing ? '编辑合同' : '新建合同'} open={modalOpen} onOk={handleSubmit} onCancel={() => setModalOpen(false)} width={700}>
         <Form form={form} layout="vertical">
           <Row gutter={16}>
@@ -122,6 +141,10 @@ export default function Contracts() {
             <Col span={8}><Form.Item name="amount_with_tax" label="金额(含税)"><InputNumber style={{ width: '100%' }} /></Form.Item></Col>
             <Col span={8}><Form.Item name="amount_without_tax" label="金额(不含税)"><InputNumber style={{ width: '100%' }} /></Form.Item></Col>
             <Col span={8}><Form.Item name="sign_date" label="签订日期"><DatePicker style={{ width: '100%' }} /></Form.Item></Col>
+          </Row>
+          <Row gutter={16}>
+            <Col span={8}><Form.Item name="invoice_amount" label="发票金额"><InputNumber style={{ width: '100%' }} /></Form.Item></Col>
+            <Col span={8}><Form.Item name="invoice_date" label="开票日期"><DatePicker style={{ width: '100%' }} /></Form.Item></Col>
           </Row>
           <Row gutter={16}>
             <Col span={8}><Form.Item name="work_start_date" label="工期开始"><DatePicker style={{ width: '100%' }} /></Form.Item></Col>
@@ -148,6 +171,15 @@ export default function Contracts() {
           <Form.Item name="payment_date" label="付款日期" rules={[{ required: true }]}><DatePicker style={{ width: '100%' }} /></Form.Item>
           <Form.Item name="note" label="备注"><Input.TextArea rows={2} /></Form.Item>
         </Form>
+      </Modal>
+      <Modal title={`付款明细 - ${detailRecord?.contract_name || ''}`} open={!!detailRecord} onCancel={() => setDetailRecord(null)} footer={null} width={640}>
+        <Table size="small" rowKey={(_, i) => String(i)} pagination={false} dataSource={detailRecord?.payment_nodes || []}
+          columns={[
+            { title: '节点/名称', dataIndex: 'node_name', key: 'node_name' },
+            { title: '金额', dataIndex: 'amount', key: 'amount', render: (v: number) => v ? `¥${v.toLocaleString()}` : '-' },
+            { title: '付款日期', key: 'pay_date', render: (_: any, n: any) => n.actual_date || n.planned_date || '-' },
+            { title: '状态', dataIndex: 'status', key: 'status', render: (s: string) => s === 'paid' ? <Tag color="green">已付款</Tag> : <Tag>待付款</Tag> },
+          ]} />
       </Modal>
     </div>
   );
