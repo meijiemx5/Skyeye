@@ -36,6 +36,8 @@ class ContractModel(BaseModel):
     amount_with_tax = NumberAttribute(null=True)
     amount_without_tax = NumberAttribute(null=True)
     paid_amount = NumberAttribute(default=0)
+    invoice_amount = NumberAttribute(null=True)  # 发票金额
+    invoice_date = UnicodeAttribute(null=True)   # 开票日期
     
     # 工期
     work_start_date = UnicodeAttribute(null=True)
