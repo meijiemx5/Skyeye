@@ -1,100 +1,88 @@
-# 中国区 API 通过 CloudFront 暴露方案
+# 中国区 API 暴露方案（www 子域名直连）
 
 ## 问题根因
 
-打开 CN 站点 `https://ruianwy.site`,页面能加载(CloudFront + 备案域名 + IAM 证书正常),
-但所有数据请求 403 失败。逐层排查结论:
+打开 CN 站点 `https://ruianwy.site`，页面能加载，但所有数据请求 403。逐层排查：
 
 | 检查项 | 结果 |
 |---|---|
-| CN Lambda 应用 | ✅ 正常(直连 invoke 返回 `200 healthy`) |
-| API Gateway stage(`api`)/ 方法(`ANY`)/ 集成 URI | ✅ 全部正确 |
-| Lambda 的 API Gateway invoke 权限 | ✅ 已授权 |
-| API Gateway 资源策略 | ✅ 无限制(None) |
-| API Gateway 自定义域名 | ❌ **未配置** |
-| 前端调用方式 | ❌ 直接访问 `execute-api` 默认域名 |
+| CN Lambda 应用 | ✅ 正常（直连 invoke 返回 `200 healthy`） |
+| API Gateway stage / 方法 / 集成 / Lambda 权限 | ✅ 全部正确 |
+| 前端调用 execute-api 默认域名 | ❌ 被平台 403 拦截 |
 
-**根因**:AWS 中国区**不允许**通过 `xxx.execute-api.cn-northwest-1.amazonaws.com.cn`
-默认域名对外提供公网服务(未备案),一律返回 `403 AccessDeniedException`。
-必须像前端 CloudFront 一样,让 API 走**已 ICP 备案的域名**。
+**根因**：AWS 中国区**禁止**通过 `xxx.execute-api.cn-northwest-1.amazonaws.com.cn`
+默认域名对外服务，任何来源（含 CloudFront 回源）都返回 `403 AccessDeniedException`。
+实测：非默认 Host 访问返回的是 API Gateway 的 `{"message":"Forbidden"}`（不同错误），
+证明**封锁只针对默认 execute-api 域名字面量**——绑一个自定义域名即可绕过。
 
-证据:CN `execute-api` 默认域名任何路径都返回
-```
-x-amzn-errortype: AccessDeniedException
-{"Message":null}
-```
-而直连 Lambda 返回 `200 {"status":"healthy"}`——应用和数据都在,是入口被挡。
+## 为什么不走 CloudFront /api/*（已否决）
 
-## 方案:CloudFront 统一入口(同源)
+设想让 `ruianwy.site/api/*` 经 CloudFront 回源到 API Gateway custom domain。
+但 **CloudFront 不允许覆盖回源的 Host 头**，而 API Gateway custom domain 靠 Host 匹配，
+所以回源永远匹配不上 —— 此路不通。
 
-复用现有的 `ruianwy.site` CloudFront(已备案、已绑 IAM 证书),
-新增一个 API Gateway origin 和一条 `/api/*` behavior:
+## 最终方案：API 用 www 子域名，浏览器直连
 
 ```
-用户 → https://ruianwy.site/            → CloudFront 默认 behavior → S3(前端静态页)
-用户 → https://ruianwy.site/api/xxx     → CloudFront "/api/*" behavior → API Gateway → Lambda
+ruianwy.site       → CloudFront（IAM 证书） → S3 前端       （不变）
+www.ruianwy.site   → API Gateway 自定义域名（ACM 证书） → Lambda   （新增）
 ```
 
-前端 `VITE_API_URL` 改为 `https://ruianwy.site`(同源),
-`client.ts` 再拼 `/api/projects` 等 → 请求 `https://ruianwy.site/api/projects`。
+- 前端 `VITE_API_URL = https://www.ruianwy.site`，浏览器直接调 `www.ruianwy.site/api/...`
+- `www.ruianwy.site` 是 API Gateway 的 custom domain，Host 匹配 → 正常路由，不触发默认域名封锁
+- 页面 `ruianwy.site` → API `www.ruianwy.site` 属跨域，但后端 `allow_origins=["*"]` 已允许
+  （与 Global 版前端调 execute-api 的跨域模式一致，已验证可用）
+- 证书 SAN 覆盖 `ruianwy.site` + `www.ruianwy.site`，两个域名共用同一张证书
+- 中国区 ICP 备案按主域名，`www` 子域名自动包含，无需单独备案
 
-好处:
-- API 不再暴露被拒的 execute-api 默认域名 → 绕过 `AccessDeniedException`。
-- 前端与 API 同源 → **CORS 问题一并消失**。
-- 只用一个备案域名、一张证书。
+### 路径映射
 
-### 路径映射(关键，避免 404)
-
-- FastAPI 路由前缀是 `/api/xxx`(如 `/api/projects`)。
-- API Gateway stage 名是 `api`;Mangum 不把 stage 计入应用路径。
-- execute-api 完整路径 = `/{stage}/{app_path}` = `/api` + `/api/projects` = `/api/api/projects`
-  （截图里看到的"双 api"是**正确**的，不是 bug）。
-
-因此 CloudFront 的 API origin 必须设 **origin path = `/api`**（补上 stage），
-behavior 匹配 `/api/*` 并把原路径 `/api/projects` 追加上去：
-
+API Gateway custom domain 的 base path mapping 映射到 `api` stage（base path 为空）。
+FastAPI 路由前缀是 `/api/xxx`，Mangum 不把 stage 计入路径，所以：
 ```
-浏览器  ruianwy.site/api/projects
-  → CF behavior "/api/*"  origin=API GW  originPath="/api"
-  → API GW 收到 /api/api/projects
-  → Mangum 去掉 stage → FastAPI 收到 /api/projects  ✅
+www.ruianwy.site/api/projects → 域名根映射到 api stage → FastAPI /api/projects ✅
 ```
+（注意：直连自定义域名**不再有**execute-api 那种 `/api/api/...` 双前缀）
 
-## CDK 改动（infrastructure/lib/frontend-stack.ts）
+## 证书要求（关键）
 
-给 `SkyeyeFrontendStack` 增加:
-1. 一个 API Gateway origin（`origins.HttpOrigin`），域名 = `<apiId>.execute-api.cn-northwest-1.amazonaws.com.cn`，`originPath: '/api'`。
-2. 一条 `additionalBehaviors['/api/*']`：
-   - `origin`: 上面的 API origin
-   - `viewerProtocolPolicy: REDIRECT_TO_HTTPS`
-   - `allowedMethods: ALLOW_ALL`（API 需要 POST/PUT/DELETE）
-   - `cachePolicy: CACHING_DISABLED`（API 响应不缓存；CN 区用 legacy ForwardedValues 关缓存并转发 Authorization 头）
-   - 必须转发 `Authorization` 头，否则 JWT 丢失 → 401。
+- API Gateway Regional custom domain **必须用 ACM 证书**，且**与 API 同区域**（cn-northwest-1）。
+- 不能用 IAM 证书（IAM 证书只有 CloudFront/ELB 能用）。
+- 前端 CloudFront 仍用 IAM 证书（CN CloudFront 的要求），两者是不同的证书体系。
+- 同一张 `ruianwy.site`(+www) 证书需要**导入两处**：IAM（给 CloudFront）+ ACM cn-northwest-1（给 API）。
 
-需要把 `apiId`（或完整 execute-api 域名）作为 prop 传入 frontend-stack。
-backend-stack 已 export `apiUrl`，可从中解析出域名。
+## CDK 改动（已实现）
 
-## deploy.sh 改动（已实现）
+- **backend-stack**：当传入 `apiCustomDomain` + `apiCertArn` 时，创建 API Gateway
+  Regional custom domain（ACM 证书，TLS_1_2）+ base path mapping 到 api stage；
+  输出 `ApiCustomDomainTarget`（DNS CNAME 目标）和 `ApiCustomDomainUrl`。
+- **frontend-stack**：移除走不通的 `/api/*` CloudFront 行为；保留前端自定义域名
+  （alias + IAM 证书，CDK 拥有，redeploy 不再被抹）。
+- **deploy.sh**：改用环境变量配置中国区；`SKYEYE_API_DOMAIN` 设置时，前端以
+  `VITE_API_URL=https://<api-domain>` 构建，直连 API 自定义域名。
 
-新增第 3 个可选参数 `site_origin`：
+## 部署命令（China）
+
 ```bash
-./deploy.sh skyeye cn-northwest-1 https://ruianwy.site
+SKYEYE_SITE_DOMAIN=ruianwy.site \
+SKYEYE_SITE_IAM_CERT_ID=ASCARF4GALIVNP3ZRZS2J \
+SKYEYE_API_DOMAIN=www.ruianwy.site \
+SKYEYE_API_CERT_ARN=arn:aws-cn:acm:cn-northwest-1:081348549162:certificate/b8904700-70cf-4d14-9b2c-6a46c5c7bd99 \
+./deploy.sh skyeye cn-northwest-1
 ```
-- 给了 `site_origin`（中国区）：前端 `VITE_API_URL` = 该备案域名（裸 origin，不带 /api/）。
-  客户端自己拼 `/api/xxx` → 请求 `https://ruianwy.site/api/xxx`（同源，走 CloudFront /api/*）。
-- 不给（Global）：`VITE_API_URL` = API Gateway 直连地址（结尾已带 /api/），行为不变。
 
-## 需要你在控制台/本地完成的事（我无法代做的部分）
+## 你需要在控制台/DNS 完成的事
 
-1. **确认 `ruianwy.site` 的 ICP 备案覆盖 API 用法**（同域名 `/api/*` 路径通常无需额外备案，因为域名本身已备案）。
-2. CDK 重新部署 CN 前端栈：`./deploy.sh skyeye cn-northwest-1`（改造后）。
-3. 部署后 CloudFront 需要几分钟传播；用
-   `curl https://ruianwy.site/api/health` 验证返回 `200 healthy`。
-4. 数据迁移（`./migrate_to_cn.sh`）可在 API 打通后再做，或先做也行（数据与入口无关）。
+1. **证书**：`ruianwy.site`(+www) 证书已导入 ACM **cn-northwest-1**
+   （ARN `...certificate/b8904700-...`）。✅
+2. **DNS**：部署后取输出 `ApiCustomDomainTarget`（形如 `d-xxxx.execute-api.cn-northwest-1.amazonaws.com.cn`），
+   在域名解析处给 `www.ruianwy.site` 加一条 **CNAME** 指向它。
+3. 等 DNS 生效 + CloudFront/域名传播（几分钟到几十分钟）。
 
 ## 验证清单
 
-- [ ] `curl https://ruianwy.site/api/health` → `{"status":"healthy"}`
-- [ ] `curl https://ruianwy.site/api/api/projects` → 401/403（正常，缺 token）
-- [ ] 浏览器登录 CN 站点 → 能看到数据、Network 里请求打到 `ruianwy.site/api/...`
-- [ ] 上传/下载附件正常（presigned URL 指向 CN S3 桶）
+- [ ] `curl https://www.ruianwy.site/api/health` → `{"status":"healthy"}`
+- [ ] `curl https://www.ruianwy.site/api/api/projects` → 401/403（正常，缺 token；注意直连是单 /api）
+      —— 修正：直连自定义域名是 `curl https://www.ruianwy.site/api/projects`
+- [ ] 浏览器登录 `ruianwy.site` → Network 里请求打到 `www.ruianwy.site/api/...` 且成功
+- [ ] 附件上传/下载正常（presigned URL 指向 CN S3 桶）

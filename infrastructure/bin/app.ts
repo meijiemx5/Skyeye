@@ -17,18 +17,25 @@ const env: cdk.Environment = {
 // Detect China region for conditional resource configuration
 const isChina = region.startsWith('cn-');
 
-// Optional custom domain + IAM cert for the frontend CloudFront (e.g. the
-// ICP-filed domain required in China). Provided via env so CDK owns them and
-// a redeploy no longer wipes a manually-attached alias/cert.
+// Frontend CloudFront custom domain + IAM cert (the ICP-filed domain, e.g.
+// ruianwy.site). CDK owns them so a redeploy no longer wipes a manual alias.
 const siteDomainName = process.env.SKYEYE_SITE_DOMAIN || undefined;
 const siteIamCertId = process.env.SKYEYE_SITE_IAM_CERT_ID || undefined;
 
-const backend = new SkyeyeBackendStack(app, 'SkyeyeBackend', { env, isChina });
+// API Gateway custom domain + ACM cert (e.g. www.ruianwy.site). Required in
+// China: the SPA calls this instead of the blocked execute-api endpoint.
+const apiCustomDomain = process.env.SKYEYE_API_DOMAIN || undefined;
+const apiCertArn = process.env.SKYEYE_API_CERT_ARN || undefined;
+
+const backend = new SkyeyeBackendStack(app, 'SkyeyeBackend', {
+  env,
+  isChina,
+  apiCustomDomain,
+  apiCertArn,
+});
 const frontend = new SkyeyeFrontendStack(app, 'SkyeyeFrontend', {
   env,
   apiUrl: backend.apiUrl,
-  apiDomain: backend.apiDomain,
-  apiStage: backend.apiStage,
   isChina,
   domainName: siteDomainName,
   iamCertId: siteIamCertId,

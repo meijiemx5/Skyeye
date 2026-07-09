@@ -5,9 +5,15 @@ import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as s3 from 'aws-cdk-lib/aws-s3';
 import * as apigw from 'aws-cdk-lib/aws-apigateway';
+import * as acm from 'aws-cdk-lib/aws-certificatemanager';
 
 interface SkyeyeBackendStackProps extends cdk.StackProps {
   isChina: boolean;
+  /** Custom domain for the API (e.g. www.ruianwy.site). Required in China: the
+   *  default execute-api domain is blocked, so the SPA must call this instead. */
+  apiCustomDomain?: string;
+  /** ACM certificate ARN (same region as the API) for apiCustomDomain. */
+  apiCertArn?: string;
 }
 
 export class SkyeyeBackendStack extends cdk.Stack {
@@ -140,6 +146,31 @@ export class SkyeyeBackendStack extends cdk.Stack {
         allowHeaders: ['*'],
       },
     });
+
+    // Custom domain for the API (required in China - the default execute-api
+    // endpoint is blocked there). The SPA calls https://<apiCustomDomain>/api/...
+    // A regional custom domain needs an ACM cert in the SAME region as the API.
+    // basePath '' maps the domain root to the 'api' stage, so
+    // https://www.ruianwy.site/api/projects -> stage api -> FastAPI /api/projects.
+    if (props.apiCustomDomain && props.apiCertArn) {
+      const cert = acm.Certificate.fromCertificateArn(this, 'ApiCert', props.apiCertArn);
+      const domain = new apigw.DomainName(this, 'ApiDomain', {
+        domainName: props.apiCustomDomain,
+        certificate: cert,
+        endpointType: apigw.EndpointType.REGIONAL,
+        securityPolicy: apigw.SecurityPolicy.TLS_1_2,
+      });
+      domain.addBasePathMapping(api, { stage: api.deploymentStage });
+
+      new cdk.CfnOutput(this, 'ApiCustomDomainTarget', {
+        value: domain.domainNameAliasDomainName,
+        description: 'CNAME target for the API custom domain (point DNS here)',
+      });
+      new cdk.CfnOutput(this, 'ApiCustomDomainUrl', {
+        value: `https://${props.apiCustomDomain}`,
+        description: 'Public API base URL (custom domain)',
+      });
+    }
 
     // Store API URL + the pieces the frontend CloudFront needs to build an
     // API origin. api.url is like https://<id>.execute-api.<region>.<suffix>/api/

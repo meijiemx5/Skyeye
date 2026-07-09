@@ -3,35 +3,33 @@ set -e
 
 # ============================================================
 # Skyeye - One-Click Deployment Script
-# Usage: ./deploy.sh [profile_name] [region] [site_origin]
+# Usage: ./deploy.sh [profile_name] [region]
 # Example: ./deploy.sh my-aws-profile us-east-1
-#          ./deploy.sh skyeye cn-northwest-1 https://ruianwy.site
 #
-# site_origin (optional): the public origin the frontend should call for the
-# API. Set it in China to the ICP-filed CloudFront domain (e.g.
-# https://ruianwy.site) so the SPA is same-origin with the API (/api/*) and
-# avoids the China execute-api block. If omitted, the raw API Gateway URL is
-# used (correct for Global; will NOT work for China's default endpoint).
+# China deployment (custom domains) is configured via env vars, because the
+# default execute-api endpoint is blocked there and the SPA must call a
+# custom-domain API instead. Set these before running for cn-* regions:
 #
-# iam_cert_id (optional, 4th arg): IAM server-certificate id for the custom
-# domain. When both site_origin and iam_cert_id are given, CDK attaches the
-# domain alias + IAM cert to CloudFront, so a redeploy no longer wipes a
-# manually-attached alias/cert. Example:
-#   ./deploy.sh skyeye cn-northwest-1 https://ruianwy.site ASCARF4GALIVNP3ZRZS2J
+#   SKYEYE_SITE_DOMAIN        frontend domain on CloudFront   (e.g. ruianwy.site)
+#   SKYEYE_SITE_IAM_CERT_ID   IAM server-cert id for the above (CloudFront/CN)
+#   SKYEYE_API_DOMAIN         API domain on API Gateway        (e.g. www.ruianwy.site)
+#   SKYEYE_API_CERT_ARN       ACM cert ARN (same region as API) for the API domain
+#
+# When SKYEYE_API_DOMAIN is set, the frontend is built to call it directly
+# (VITE_API_URL=https://<api-domain>); otherwise it calls the API Gateway URL.
+# Example (China):
+#   SKYEYE_SITE_DOMAIN=ruianwy.site \
+#   SKYEYE_SITE_IAM_CERT_ID=ASCARF4GALIVNP3ZRZS2J \
+#   SKYEYE_API_DOMAIN=www.ruianwy.site \
+#   SKYEYE_API_CERT_ARN=arn:aws-cn:acm:cn-northwest-1:...:certificate/xxxx \
+#   ./deploy.sh skyeye cn-northwest-1
 # ============================================================
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 AWS_PROFILE="${1:-default}"
 AWS_REGION="${2:-us-east-1}"
-SITE_ORIGIN="${3:-}"
-IAM_CERT_ID="${4:-}"
-
-# Pass the custom-domain config to CDK (bin/app.ts reads these). Derived from
-# site_origin (strip scheme/trailing slash) so CDK owns the alias + cert.
-if [ -n "${SITE_ORIGIN}" ]; then
-  export SKYEYE_SITE_DOMAIN="$(echo "${SITE_ORIGIN}" | sed -E 's#^https?://##; s#/$##')"
-fi
-[ -n "${IAM_CERT_ID}" ] && export SKYEYE_SITE_IAM_CERT_ID="${IAM_CERT_ID}"
+# Custom-domain config comes from the SKYEYE_* env vars documented above;
+# bin/app.ts reads them directly. They are already exported into this shell.
 
 echo "============================================================"
 echo "  👁 Skyeye - 信息化弱电公司管理系统"
@@ -102,12 +100,14 @@ INIT_RESULT=$(curl -s -X POST "${API_URL}api/auth/init-admin" 2>/dev/null || ech
 echo "  ${INIT_RESULT}"
 
 # Decide the API base the frontend will call.
-# - With SITE_ORIGIN set (China): call the same CloudFront domain; the SPA hits
-#   <origin>/api/... which the /api/* behavior routes to API Gateway. The client
-#   appends /api/... itself, so the base is the bare origin (no /api/ suffix).
+# - With SKYEYE_API_DOMAIN set (China): call the API's custom domain directly,
+#   e.g. https://www.ruianwy.site. The client appends /api/... itself, so the
+#   base is the bare origin (no /api/ suffix). This avoids the blocked
+#   execute-api endpoint; cross-origin from the site domain is allowed by CORS.
 # - Without it (Global): call the API Gateway URL directly (already ends in /api/).
-if [ -n "${SITE_ORIGIN}" ]; then
-  FRONTEND_API_BASE="${SITE_ORIGIN%/}"
+if [ -n "${SKYEYE_API_DOMAIN}" ]; then
+  FRONTEND_API_BASE="https://${SKYEYE_API_DOMAIN#https://}"
+  FRONTEND_API_BASE="${FRONTEND_API_BASE%/}"
 else
   FRONTEND_API_BASE="${API_URL}"
 fi
