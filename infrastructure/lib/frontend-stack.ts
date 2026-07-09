@@ -9,6 +9,10 @@ import * as origins from 'aws-cdk-lib/aws-cloudfront-origins';
 
 interface SkyeyeFrontendStackProps extends cdk.StackProps {
   apiUrl: string;
+  /** API Gateway execute-api host (no scheme/path) */
+  apiDomain: string;
+  /** API Gateway stage name (becomes the API origin path) */
+  apiStage: string;
   isChina: boolean;
 }
 
@@ -35,6 +39,30 @@ export class SkyeyeFrontendStack extends cdk.Stack {
     // China region compatibility flags
     const isChina = props.isChina;
 
+    // API Gateway origin. originPath = the stage ('/api'), so a request to
+    // /api/projects reaches API GW as /api/api/projects, which Mangum strips
+    // the stage from -> FastAPI sees /api/projects. Serving the API under the
+    // same (ICP-filed) CloudFront domain both bypasses the China execute-api
+    // block and makes the frontend same-origin (no CORS).
+    const apiOrigin = new origins.HttpOrigin(props.apiDomain, {
+      originPath: `/${props.apiStage}`,
+      protocolPolicy: cloudfront.OriginProtocolPolicy.HTTPS_ONLY,
+    });
+
+    // The API must not be cached and must forward the Authorization header
+    // (JWT) and query strings. In China, managed cache/origin-request policies
+    // are unavailable, so caching/forwarding is handled by the legacy
+    // ForwardedValues override applied further below.
+    const apiBehavior: cloudfront.BehaviorOptions = {
+      origin: apiOrigin,
+      viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
+      allowedMethods: cloudfront.AllowedMethods.ALLOW_ALL,
+      cachePolicy: cloudfront.CachePolicy.CACHING_DISABLED,
+      ...(!isChina
+        ? { originRequestPolicy: cloudfront.OriginRequestPolicy.ALL_VIEWER_EXCEPT_HOST_HEADER }
+        : {}),
+    };
+
     const distribution = new cloudfront.Distribution(this, 'Distribution', {
       defaultBehavior: {
         origin: new origins.S3Origin(siteBucket, {
@@ -42,6 +70,9 @@ export class SkyeyeFrontendStack extends cdk.Stack {
         }),
         viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
         ...(!isChina ? { cachePolicy: cloudfront.CachePolicy.CACHING_OPTIMIZED } : {}),
+      },
+      additionalBehaviors: {
+        '/api/*': apiBehavior,
       },
       defaultRootObject: 'index.html',
       enableIpv6: !isChina,
@@ -61,14 +92,28 @@ export class SkyeyeFrontendStack extends cdk.Stack {
       ],
     });
 
-    // China regions do not support CachePolicyId - use legacy ForwardedValues instead
+    // China regions do not support managed CachePolicyId/OriginRequestPolicyId -
+    // replace them with the legacy ForwardedValues on both behaviors.
     if (isChina) {
       const cfnDist = distribution.node.defaultChild as cloudfront.CfnDistribution;
-      cfnDist.addPropertyOverride('DistributionConfig.DefaultCacheBehavior.CachePolicyId', undefined);
+
+      // Default behavior (S3 static site): no forwarding needed.
       cfnDist.addPropertyDeletionOverride('DistributionConfig.DefaultCacheBehavior.CachePolicyId');
       cfnDist.addPropertyOverride('DistributionConfig.DefaultCacheBehavior.ForwardedValues', {
         QueryString: false,
       });
+
+      // /api/* behavior (index 0): must not cache and must forward the JWT
+      // Authorization header + query strings, or every API call would 401.
+      cfnDist.addPropertyDeletionOverride('DistributionConfig.CacheBehaviors.0.CachePolicyId');
+      cfnDist.addPropertyDeletionOverride('DistributionConfig.CacheBehaviors.0.OriginRequestPolicyId');
+      cfnDist.addPropertyOverride('DistributionConfig.CacheBehaviors.0.ForwardedValues', {
+        QueryString: true,
+        Headers: ['Authorization'],
+      });
+      cfnDist.addPropertyOverride('DistributionConfig.CacheBehaviors.0.MinTTL', 0);
+      cfnDist.addPropertyOverride('DistributionConfig.CacheBehaviors.0.DefaultTTL', 0);
+      cfnDist.addPropertyOverride('DistributionConfig.CacheBehaviors.0.MaxTTL', 0);
     }
 
     // ============================================================

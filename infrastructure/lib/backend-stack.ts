@@ -13,6 +13,10 @@ interface SkyeyeBackendStackProps extends cdk.StackProps {
 export class SkyeyeBackendStack extends cdk.Stack {
   /** API Gateway URL - exposed for frontend stack */
   public readonly apiUrl: string;
+  /** API Gateway execute-api host (no scheme/path) - for CloudFront origin */
+  public readonly apiDomain: string;
+  /** API Gateway stage name - CloudFront origin path must prepend this */
+  public readonly apiStage: string;
 
   constructor(scope: Construct, id: string, props: SkyeyeBackendStackProps) {
     super(scope, id, props);
@@ -137,8 +141,12 @@ export class SkyeyeBackendStack extends cdk.Stack {
       },
     });
 
-    // Store API URL
+    // Store API URL + the pieces the frontend CloudFront needs to build an
+    // API origin. api.url is like https://<id>.execute-api.<region>.<suffix>/api/
+    // so the host is the execute-api domain and the stage is the origin path.
     this.apiUrl = api.url;
+    this.apiDomain = `${api.restApiId}.execute-api.${this.region}.${cdk.Aws.URL_SUFFIX}`;
+    this.apiStage = api.deploymentStage.stageName;
 
     // ============================================================
     // Outputs

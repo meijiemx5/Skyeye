@@ -3,13 +3,21 @@ set -e
 
 # ============================================================
 # Skyeye - One-Click Deployment Script
-# Usage: ./deploy.sh [profile_name] [region]
+# Usage: ./deploy.sh [profile_name] [region] [site_origin]
 # Example: ./deploy.sh my-aws-profile us-east-1
+#          ./deploy.sh skyeye cn-northwest-1 https://ruianwy.site
+#
+# site_origin (optional): the public origin the frontend should call for the
+# API. Set it in China to the ICP-filed CloudFront domain (e.g.
+# https://ruianwy.site) so the SPA is same-origin with the API (/api/*) and
+# avoids the China execute-api block. If omitted, the raw API Gateway URL is
+# used (correct for Global; will NOT work for China's default endpoint).
 # ============================================================
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 AWS_PROFILE="${1:-default}"
 AWS_REGION="${2:-us-east-1}"
+SITE_ORIGIN="${3:-}"
 
 echo "============================================================"
 echo "  👁 Skyeye - 信息化弱电公司管理系统"
@@ -79,15 +87,26 @@ sleep 5  # Wait for Lambda cold start
 INIT_RESULT=$(curl -s -X POST "${API_URL}api/auth/init-admin" 2>/dev/null || echo '{"message":"init failed"}')
 echo "  ${INIT_RESULT}"
 
-# Build frontend with API URL.
+# Decide the API base the frontend will call.
+# - With SITE_ORIGIN set (China): call the same CloudFront domain; the SPA hits
+#   <origin>/api/... which the /api/* behavior routes to API Gateway. The client
+#   appends /api/... itself, so the base is the bare origin (no /api/ suffix).
+# - Without it (Global): call the API Gateway URL directly (already ends in /api/).
+if [ -n "${SITE_ORIGIN}" ]; then
+  FRONTEND_API_BASE="${SITE_ORIGIN%/}"
+else
+  FRONTEND_API_BASE="${API_URL}"
+fi
+
+# Build frontend with the resolved API base.
 # Inject VITE_API_URL inline (not via a committed .env.production) and wipe any stale
 # dist/ from a previous region so this region's site can only ever embed its own API URL.
 echo ""
-echo "📋 Step 5: Building frontend (API: ${API_URL})..."
+echo "📋 Step 5: Building frontend (API base: ${FRONTEND_API_BASE})..."
 cd "${SCRIPT_DIR}/frontend"
 rm -rf dist
 npm install --silent
-VITE_API_URL="${API_URL}" npm run build
+VITE_API_URL="${FRONTEND_API_BASE}" npm run build
 
 # Deploy frontend stack
 echo ""

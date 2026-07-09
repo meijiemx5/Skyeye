@@ -21,6 +21,8 @@ const backend = new SkyeyeBackendStack(app, 'SkyeyeBackend', { env, isChina });
 const frontend = new SkyeyeFrontendStack(app, 'SkyeyeFrontend', {
   env,
   apiUrl: backend.apiUrl,
+  apiDomain: backend.apiDomain,
+  apiStage: backend.apiStage,
   isChina,
 });
 
