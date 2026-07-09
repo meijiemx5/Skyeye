@@ -6,30 +6,39 @@ set -e
 # Usage: ./deploy.sh [profile_name] [region]
 # Example: ./deploy.sh my-aws-profile us-east-1
 #
-# China deployment (custom domains) is configured via env vars, because the
-# default execute-api endpoint is blocked there and the SPA must call a
-# custom-domain API instead. Set these before running for cn-* regions:
+# China deployment (custom domains) needs these values, because the default
+# execute-api endpoint is blocked there and the SPA must call a custom-domain
+# API instead:
 #
 #   SKYEYE_SITE_DOMAIN        frontend domain on CloudFront   (e.g. ruianwy.site)
 #   SKYEYE_SITE_IAM_CERT_ID   IAM server-cert id for the above (CloudFront/CN)
 #   SKYEYE_API_DOMAIN         API domain on API Gateway        (e.g. www.ruianwy.site)
 #   SKYEYE_API_CERT_ARN       ACM cert ARN (same region as API) for the API domain
 #
+# They are read from a config file automatically (see below): put them in
+# deploy.cn.env (any cn-* region) or deploy.<region>.env. So the command is
+# just:  ./deploy.sh skyeye cn-northwest-1
+# You can still override any value inline: SKYEYE_API_DOMAIN=x ./deploy.sh ...
+#
 # When SKYEYE_API_DOMAIN is set, the frontend is built to call it directly
 # (VITE_API_URL=https://<api-domain>); otherwise it calls the API Gateway URL.
-# Example (China):
-#   SKYEYE_SITE_DOMAIN=ruianwy.site \
-#   SKYEYE_SITE_IAM_CERT_ID=ASCARF4GALIVNP3ZRZS2J \
-#   SKYEYE_API_DOMAIN=www.ruianwy.site \
-#   SKYEYE_API_CERT_ARN=arn:aws-cn:acm:cn-northwest-1:...:certificate/xxxx \
-#   ./deploy.sh skyeye cn-northwest-1
 # ============================================================
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 AWS_PROFILE="${1:-default}"
 AWS_REGION="${2:-us-east-1}"
-# Custom-domain config comes from the SKYEYE_* env vars documented above;
-# bin/app.ts reads them directly. They are already exported into this shell.
+
+# Auto-load a per-region config file if present, e.g. deploy.cn-northwest-1.env
+# or deploy.cn.env for any cn-* region. It just sets the SKYEYE_* vars below.
+# Values already set in the environment take precedence (we don't overwrite).
+for ENV_FILE in "${SCRIPT_DIR}/deploy.${AWS_REGION}.env" \
+                $([ "${AWS_REGION#cn-}" != "${AWS_REGION}" ] && echo "${SCRIPT_DIR}/deploy.cn.env"); do
+  if [ -f "${ENV_FILE}" ]; then
+    echo "📄 Loading deploy config: ${ENV_FILE}"
+    set -a; . "${ENV_FILE}"; set +a
+    break
+  fi
+done
 
 echo "============================================================"
 echo "  👁 Skyeye - 信息化弱电公司管理系统"
