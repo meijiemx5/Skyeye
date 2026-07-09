@@ -26,6 +26,7 @@ export default function Inventory() {
 
   const [projects, setProjects] = useState<any[]>([]);
   const [projectContracts, setProjectContracts] = useState<any[]>([]);
+  const [recordFilters, setRecordFilters] = useState<{ record_type?: string; project_id?: string }>({});
 
   useEffect(() => { loadAll(); projectApi.list().then(r => setProjects(r.data.data || [])).catch(() => {}); }, []);
 
@@ -35,6 +36,12 @@ export default function Inventory() {
       const res = await contractApi.list({ project_id });
       setProjectContracts(res.data.data || []);
     } catch { setProjectContracts([]); }
+  };
+
+  const loadRecords = async (overrides?: { record_type?: string; project_id?: string }) => {
+    const params: any = { ...(overrides ?? recordFilters) };
+    Object.keys(params).forEach(k => { if (!params[k]) delete params[k]; });
+    try { const res = await inventoryApi.listRecords(params); setRecords(res.data.data || []); } catch {}
   };
 
   const loadAll = async () => {
@@ -120,7 +127,21 @@ export default function Inventory() {
             <Table columns={matColumns} dataSource={materials} rowKey="material_id" loading={loading} size="middle" scroll={{ x: 1100 }} />
           </>
         )},
-        { key: 'records', label: '出入库记录', children: <Table columns={recColumns} dataSource={records} rowKey="record_id" loading={loading} size="middle" /> },
+        { key: 'records', label: '出入库记录', children: (
+          <>
+            <Space style={{ marginBottom: 16 }}>
+              <Select allowClear placeholder="按类型筛选" style={{ width: 140 }}
+                options={[{ value: 'in', label: '入库' }, { value: 'out', label: '出库' }, { value: 'adjustment', label: '盘点' }]}
+                onChange={(v) => { const f = { ...recordFilters, record_type: v }; setRecordFilters(f); loadRecords(f); }}
+              />
+              <Select allowClear showSearch optionFilterProp="label" placeholder="按项目筛选" style={{ width: 200 }}
+                options={projects.map(p => ({ value: p.project_id, label: p.project_name }))}
+                onChange={(v) => { const f = { ...recordFilters, project_id: v }; setRecordFilters(f); loadRecords(f); }}
+              />
+            </Space>
+            <Table columns={recColumns} dataSource={records} rowKey="record_id" loading={loading} size="middle" />
+          </>
+        )},
       ]} />
 
       <Modal title={editing ? '编辑物料' : '新增物料'} open={materialModal} onOk={handleMaterialSubmit} onCancel={() => setMaterialModal(false)} width={600}>
