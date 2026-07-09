@@ -8,7 +8,22 @@ body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  background: #f5f7fa;
+  color: #1e293b;
 }
+
+/* Tabular numerals so money columns align */
+.ant-statistic-content { font-variant-numeric: tabular-nums; }
+
+/* Refined thin scrollbar */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 8px; }
+::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+::-webkit-scrollbar-track { background: transparent; }
+
+/* Subtle page-load ease for the content area */
+.ant-layout-content { animation: skyeye-fade 0.24s ease; }
+@keyframes skyeye-fade { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 
 /* Make Ant Design Modal body scrollable when content is tall */
 .ant-modal .ant-modal-body {
