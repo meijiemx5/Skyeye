@@ -147,6 +147,16 @@ export class SkyeyeBackendStack extends cdk.Stack {
       },
     });
 
+    // Force a fresh deployment to the stage on every `cdk deploy`. By default
+    // CloudFormation only creates a new AWS::ApiGateway::Deployment when the
+    // API's resource graph changes; a config tweak that doesn't alter that
+    // graph - or a deploy interrupted before the stage repointed - can leave
+    // the stage serving a stale snapshot, which is what caused the stage-wide
+    // 403. Salting the deployment's logical id with a synth-time timestamp
+    // makes CloudFormation mint a new deployment and repoint the stage every
+    // time, so the live stage can never drift from the deployed config.
+    api.latestDeployment?.addToLogicalId(new Date().toISOString());
+
     // Custom domain for the API (required in China - the default execute-api
     // endpoint is blocked there). The SPA calls https://<apiCustomDomain>/api/...
     // A regional custom domain needs an ACM cert in the SAME region as the API.
