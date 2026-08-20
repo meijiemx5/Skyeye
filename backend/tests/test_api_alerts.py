@@ -221,6 +221,50 @@ def test_todo_count_is_a_lightweight_summary(bare_project, as_user):
     assert set(data) == {"total", "high", "medium", "low", "by_type"}
 
 
+@pytest.mark.parametrize("status", ["cancelled", "suspended"])
+def test_dropped_projects_stop_generating_checklist_todos(store, as_user, status):
+    """催一个已取消/已暂停的项目补预算没有意义 —— 这是 99+ 噪音的主要来源。"""
+    seed_project(store, project_id="p1", manager_id="u-pm", status=status, **PAST)
+    todos = as_user("pm").get("/api/todos").json()["data"]["todos"]
+    assert [t for t in todos if t["type"] == "project_checklist"] == []
+
+
+def test_completed_projects_still_get_chased(store, as_user):
+    """已完成的项目要留着：尾款未开票、验收资料未上传正是要盯的。"""
+    seed_project(store, project_id="p1", manager_id="u-pm", status="completed", **PAST)
+    todos = as_user("pm").get("/api/todos").json()["data"]["todos"]
+    assert {t["todo_id"].split(":")[-1] for t in todos} == {
+        "budget", "quote", "client_contract", "labor_contract", "acceptance"}
+
+
+def test_in_flight_reimbursement_survives_project_cancellation(store, as_user):
+    """项目取消了，但已提交的报销还是钱，财务的待办不能因此消失。"""
+    seed_project(store, project_id="p1", manager_id="u-pm", status="cancelled", **PAST)
+    seed_category(store)
+    as_user("construction").post("/api/reimbursements", json={
+        "project_id": "p1", "project_name": "某小区弱电", "amount_with_tax": 1200,
+        "expense_type": "cat-material", "expense_category_id": "cat-material",
+        "description": "买线材", "expense_date": "2026-08-01"})
+
+    pm_todos = as_user("pm").get("/api/todos").json()["data"]["todos"]
+    assert [t["type"] for t in pm_todos] == ["reimbursement"]
+
+
+def test_dropped_projects_still_show_on_the_board_when_asked(store, as_user):
+    """看板是另一回事：显式要 all 时仍然看得到已取消的项目。"""
+    seed_project(store, project_id="p1", manager_id="u-pm", status="cancelled", **PAST)
+    board = as_user("pm").get("/api/alerts/board", params={"project_status": "all"}).json()["data"]
+    assert [p["project_id"] for p in board["projects"]] == ["p1"]
+
+
+def test_count_separates_urgent_from_total(bare_project, as_user):
+    """侧边栏红点只数 high，所以这两个数必须分开给。"""
+    data = as_user("pm").get("/api/todos/count").json()["data"]
+    assert data["total"] == 5
+    assert data["high"] == 5          # 项目起止日期都在过去，五项全逾期
+    assert data["high"] <= data["total"]
+
+
 def test_todos_can_be_filtered_by_type_and_severity(bare_project, as_user):
     pm = as_user("pm")
     by_type = pm.get("/api/todos", params={"todo_type": "stock_warning"}).json()

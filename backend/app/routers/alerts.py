@@ -24,6 +24,10 @@ router = APIRouter(prefix="/api", tags=["预警与待办"])
 DOC_FIELDS = ("basic_docs", "engineering_docs", "compliance_docs",
               "result_docs", "other_docs", "rectification_docs")
 
+# 只有这些状态的项目会生成"缺件"待办：催一个已取消/已暂停的项目补预算没有意义。
+# 已完成的项目保留 —— 尾款未开票、验收资料未上传正是要盯的。
+TODO_PROJECT_STATUSES = ("active", "completed")
+
 
 def _load_context() -> dict:
     """One pass over the table; the dataset is small (20-person company)."""
@@ -179,12 +183,14 @@ def project_alerts(project_id: str, current_user: dict = Depends(require_permiss
 
 def _collect_todos(ctx: dict, current_user: dict) -> list[dict]:
     """待办只包含用户点进去真能看到的记录，否则"去处理"会跳到一个空列表。"""
-    projects = _visible_projects(ctx, current_user)
-    checklists = _build_checklists(ctx, projects)
+    visible = _visible_projects(ctx, current_user)
+    checklists = _build_checklists(
+        ctx, [p for p in visible if p["status"] in TODO_PROJECT_STATUSES])
 
     reimbursements, acceptances = ctx["reimbursements"], ctx["acceptances"]
     if current_user.get("role") == "project_manager":
-        own_ids = {p["project_id"] for p in projects}
+        # 这里按 visible 而非上面收窄后的列表：项目取消了，在途的报销该处理还得处理
+        own_ids = {p["project_id"] for p in visible}
         uid = current_user["user_id"]
         reimbursements = [r for r in reimbursements
                           if r["project_id"] in own_ids or r["applicant_id"] == uid]

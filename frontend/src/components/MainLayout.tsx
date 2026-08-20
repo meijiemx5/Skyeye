@@ -30,7 +30,8 @@ export default function MainLayout() {
   const screens = useBreakpoint();
   const isMobile = !screens.md;
 
-  const [todoCount, setTodoCount] = useState(0);
+  // 红点只数紧急项（逾期/停留过久），否则动辄 99+ 就没人看了；总数放 hover 提示里
+  const [todoStat, setTodoStat] = useState({ total: 0, high: 0 });
 
   const pageTitles: Record<string, string> = {
     '/': '工作台',
@@ -55,7 +56,10 @@ export default function MainLayout() {
   // 待办红点：换页时刷新，让"有事没做"一直看得见
   useEffect(() => {
     todoApi.count()
-      .then(r => setTodoCount(r.data.data?.total || 0))
+      .then(r => setTodoStat({
+        total: r.data.data?.total || 0,
+        high: r.data.data?.high || 0,
+      }))
       .catch(() => {});
   }, [location.pathname]);
 
@@ -78,11 +82,35 @@ export default function MainLayout() {
     }
   };
 
+  // 待办计数放菜单行最右侧：不能用 Badge 包住文字 —— antd 给 .ant-badge 套了
+  // resetComponent()，其中的 color: colorText 会把深色侧边栏上的文字刷成近黑色，
+  // 加上角标默认压在文字右边缘，两下叠起来就看不清了。
+  const todoLabel = (
+    <span
+      style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}
+      title={todoStat.total ? `紧急 ${todoStat.high} 项，共 ${todoStat.total} 项待办` : '暂无待办'}
+    >
+      <span>我的待办</span>
+      {todoStat.high > 0 && (
+        <span style={{
+          flexShrink: 0, background: '#e5484d', color: '#fff', fontSize: 12, lineHeight: '18px',
+          minWidth: 18, padding: '0 6px', borderRadius: 9, textAlign: 'center', fontWeight: 500,
+        }}>
+          {todoStat.high > 99 ? '99+' : todoStat.high}
+        </span>
+      )}
+    </span>
+  );
+
   const menuItems = [
     { key: '/', icon: <DashboardOutlined />, label: '工作台' },
     {
-      key: '/todos', icon: <CheckSquareOutlined />,
-      label: <Badge count={todoCount} offset={[10, 0]} size="small" overflowCount={99}>我的待办</Badge>,
+      key: '/todos',
+      // 侧边栏收起时只剩图标，用一个小红点保留提示
+      icon: collapsed && !isMobile && todoStat.high > 0
+        ? <Badge dot offset={[2, 0]}><CheckSquareOutlined style={{ color: 'inherit' }} /></Badge>
+        : <CheckSquareOutlined />,
+      label: todoLabel,
     },
     // 项目列表 / 合同 / 验收资料仅管理员与项目负责人可见（与后端权限表一致）
     ...(hasPermission(user.role, 'project:list') ? [
