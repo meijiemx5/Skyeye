@@ -7,7 +7,9 @@ GSI1SK: {created_at}#{reimburse_id}
 GSI2PK: PROJECT#{project_id}
 GSI2SK: REIMBURSE#{reimburse_id}
 """
-from pynamodb.attributes import UnicodeAttribute, NumberAttribute, ListAttribute, MapAttribute
+from pynamodb.attributes import (
+    UnicodeAttribute, NumberAttribute, ListAttribute, MapAttribute, BooleanAttribute,
+)
 from .base import BaseModel, AttachmentMap
 
 
@@ -42,11 +44,38 @@ class ReimbursementModel(BaseModel):
     description = UnicodeAttribute()  # 报销事由
     expense_date = UnicodeAttribute()  # 发生日期
     
-    # 状态流转: pending_review -> manager_approved -> finance_approved -> paid / rejected
+    # 状态流转 (services/reimburse_flow.py 是唯一权威):
+    # pending_review -> manager_approved -> receipt_confirmed -> document_created
+    #   -> finance_approved -> voucher_generated -> paid / rejected
     status = UnicodeAttribute(default="pending_review")
-    
+
     # 审核记录
     audit_logs = ListAttribute(of=AuditLogMap, default=list)
+
+    # 项目收款确认 (硬门禁: 未确认收款不能创建单据; admin 可跳过并留痕)
+    receipt_contract_id = UnicodeAttribute(null=True)
+    receipt_contract_no = UnicodeAttribute(null=True)
+    receipt_amount = NumberAttribute(null=True)
+    receipt_date = UnicodeAttribute(null=True)
+    receipt_note = UnicodeAttribute(null=True)
+    receipt_confirmed_at = UnicodeAttribute(null=True)
+    receipt_confirmed_by = UnicodeAttribute(null=True)
+    receipt_confirmed_by_name = UnicodeAttribute(null=True)
+    receipt_skipped = BooleanAttribute(null=True)
+    receipt_skip_reason = UnicodeAttribute(null=True)
+
+    # 报销单据
+    document_no = UnicodeAttribute(null=True)
+    document_created_at = UnicodeAttribute(null=True)
+    document_created_by = UnicodeAttribute(null=True)
+    document_created_by_name = UnicodeAttribute(null=True)
+
+    # 会计凭证
+    voucher_no = UnicodeAttribute(null=True)
+    voucher_generated_at = UnicodeAttribute(null=True)
+    voucher_generated_by = UnicodeAttribute(null=True)
+    voucher_generated_by_name = UnicodeAttribute(null=True)
+    voucher_files = ListAttribute(of=AttachmentMap, default=list)
     
     # 当前审核人
     current_reviewer_id = UnicodeAttribute(null=True)

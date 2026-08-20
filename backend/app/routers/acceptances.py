@@ -8,7 +8,7 @@ from typing import Optional
 from ..models.acceptance import AcceptanceDocModel, AcceptanceMemberMap
 from ..schemas.acceptance import AcceptanceCreate, AcceptanceUpdate
 from ..schemas.common import APIResponse
-from ..utils.auth import get_current_user, require_roles
+from ..utils.permissions import require_permission
 from ..services.audit import log_action
 
 router = APIRouter(prefix="/api/acceptances", tags=["验收资料"])
@@ -47,7 +47,7 @@ def _acceptance_to_dict(a):
 def list_acceptances(
     status: Optional[str] = Query(None),
     project_id: Optional[str] = Query(None),
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(require_permission("acceptance:view"))
 ):
     """List acceptance documents."""
     results = list(AcceptanceDocModel.scan(filter_condition=AcceptanceDocModel.entity_type == "acceptance"))
@@ -60,7 +60,7 @@ def list_acceptances(
 
 
 @router.get("/{acceptance_id}")
-def get_acceptance(acceptance_id: str, current_user: dict = Depends(get_current_user)):
+def get_acceptance(acceptance_id: str, current_user: dict = Depends(require_permission("acceptance:view"))):
     """Get acceptance document detail."""
     try:
         a = AcceptanceDocModel.get(AcceptanceDocModel.make_pk(acceptance_id), AcceptanceDocModel.make_sk())
@@ -70,7 +70,7 @@ def get_acceptance(acceptance_id: str, current_user: dict = Depends(get_current_
 
 
 @router.post("")
-def create_acceptance(req: AcceptanceCreate, current_user: dict = Depends(require_roles("admin", "project_manager"))):
+def create_acceptance(req: AcceptanceCreate, current_user: dict = Depends(require_permission("acceptance:write"))):
     """Create acceptance record."""
     acceptance_id = str(uuid.uuid4())[:8]
     now = datetime.now(timezone.utc).isoformat()
@@ -109,7 +109,7 @@ def create_acceptance(req: AcceptanceCreate, current_user: dict = Depends(requir
 
 
 @router.put("/{acceptance_id}")
-def update_acceptance(acceptance_id: str, req: AcceptanceUpdate, current_user: dict = Depends(require_roles("admin", "project_manager"))):
+def update_acceptance(acceptance_id: str, req: AcceptanceUpdate, current_user: dict = Depends(require_permission("acceptance:write"))):
     """Update acceptance record."""
     try:
         a = AcceptanceDocModel.get(AcceptanceDocModel.make_pk(acceptance_id), AcceptanceDocModel.make_sk())
@@ -161,7 +161,7 @@ def update_acceptance(acceptance_id: str, req: AcceptanceUpdate, current_user: d
 
 
 @router.delete("/{acceptance_id}")
-def delete_acceptance(acceptance_id: str, current_user: dict = Depends(require_roles("admin"))):
+def delete_acceptance(acceptance_id: str, current_user: dict = Depends(require_permission("acceptance:delete"))):
     """Delete acceptance record."""
     try:
         a = AcceptanceDocModel.get(AcceptanceDocModel.make_pk(acceptance_id), AcceptanceDocModel.make_sk())

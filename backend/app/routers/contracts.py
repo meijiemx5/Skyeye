@@ -1,4 +1,9 @@
-"""Contract router."""
+"""Contract router.
+
+查看权限: 完整合同仅管理员与项目负责人 (`contract:view`)，项目负责人限于自己负责的项目。
+财务与采购通过 `GET /api/contracts/options` 拿到精简合同选项（合同号/名称/类型/金额/已付），
+用于合同付款与报销链路的项目收款确认，拿不到条款、附件等敏感内容。
+"""
 import uuid
 from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException, Depends, Query
@@ -6,9 +11,11 @@ from pynamodb.exceptions import DoesNotExist
 from typing import Optional
 
 from ..models.contract import ContractModel
-from ..schemas.contract import ContractCreate, ContractUpdate, ContractQuery
+from ..schemas.contract import ContractCreate, ContractUpdate
 from ..schemas.common import APIResponse
-from ..utils.auth import get_current_user, require_roles
+from ..utils.attachments import to_attachment_maps
+from ..utils.permissions import require_permission
+from ..utils.scoping import own_project_ids
 from ..services.audit import log_action
 
 router = APIRouter(prefix="/api/contracts", tags=["合同管理"])
@@ -16,6 +23,14 @@ router = APIRouter(prefix="/api/contracts", tags=["合同管理"])
 
 def _user_name(u: dict) -> str:
     return f"{u.get('username','')}({u.get('display_name','')})"
+
+
+def _scope_to_own_projects(results, current_user: dict):
+    """Project managers only see contracts under the projects they run."""
+    if current_user.get("role") != "project_manager":
+        return results
+    own = own_project_ids(current_user["user_id"])
+    return [r for r in results if r.project_id in own]
 
 
 def _contract_to_dict(c):
@@ -84,11 +99,11 @@ def list_contracts(
     project_id: Optional[str] = Query(None),
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(require_permission("contract:view"))
 ):
-    """List contracts with filtering."""
+    """List contracts with filtering (admin / project manager only)."""
     results = list(ContractModel.scan(filter_condition=ContractModel.entity_type == "contract"))
-    
+
     # Apply filters
     if contract_type:
         results = [r for r in results if r.contract_type == contract_type]
@@ -98,16 +113,9 @@ def list_contracts(
         results = [r for r in results if r.project_id == project_id]
     if keyword:
         results = [r for r in results if keyword in (r.contract_name or "") or keyword in (r.party_name or "") or keyword in (r.contract_no or "")]
-    
-    # Role-based filtering
-    role = current_user["role"]
-    if role == "project_manager":
-        results = [r for r in results if r.contract_type == "client"]
-    elif role == "procurement":
-        results = [r for r in results if r.contract_type == "supplier"]
-    elif role == "construction":
-        results = [r for r in results if r.contract_type == "construction" and r.party_name and current_user["display_name"] in r.party_name]
-    
+
+    results = _scope_to_own_projects(results, current_user)
+
     total = len(results)
     # Pagination
     start = (page - 1) * page_size
@@ -117,17 +125,50 @@ def list_contracts(
     return APIResponse(data=data, total=total)
 
 
+@router.get("/options")
+def list_contract_options(
+    contract_type: Optional[str] = Query(None),
+    project_id: Optional[str] = Query(None),
+    current_user: dict = Depends(require_permission("contract:options"))
+):
+    """精简合同选项 - 财务付款、报销收款确认用；不含条款、附件、发票明细。"""
+    results = list(ContractModel.scan(filter_condition=ContractModel.entity_type == "contract"))
+    if contract_type:
+        results = [r for r in results if r.contract_type == contract_type]
+    if project_id:
+        results = [r for r in results if r.project_id == project_id]
+    results = _scope_to_own_projects(results, current_user)
+
+    data = [
+        {
+            "contract_id": c.contract_id,
+            "contract_no": c.contract_no,
+            "contract_name": c.contract_name,
+            "contract_type": c.contract_type,
+            "project_id": c.project_id,
+            "project_name": c.project_name,
+            "amount_with_tax": c.amount_with_tax,
+            "paid_amount": c.paid_amount or 0,
+            "status": c.status,
+        }
+        for c in results
+    ]
+    data.sort(key=lambda x: x["contract_no"] or "")
+    return APIResponse(data=data, total=len(data))
+
+
 @router.get("/statistics")
 def contract_statistics(
     contract_type: Optional[str] = Query(None),
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(require_permission("contract:view"))
 ):
     """Get contract statistics."""
     results = list(ContractModel.scan(filter_condition=ContractModel.entity_type == "contract"))
-    
+
     if contract_type:
         results = [r for r in results if r.contract_type == contract_type]
-    
+    results = _scope_to_own_projects(results, current_user)
+
     stats = {
         "total_count": len(results),
         "total_amount": sum(r.amount_with_tax or 0 for r in results),
@@ -154,17 +195,19 @@ def contract_statistics(
 
 
 @router.get("/{contract_id}")
-def get_contract(contract_id: str, current_user: dict = Depends(get_current_user)):
+def get_contract(contract_id: str, current_user: dict = Depends(require_permission("contract:view"))):
     """Get contract detail."""
     try:
         c = ContractModel.get(ContractModel.make_pk(contract_id), ContractModel.make_sk())
     except DoesNotExist:
         raise HTTPException(status_code=404, detail="合同不存在")
+    if not _scope_to_own_projects([c], current_user):
+        raise HTTPException(status_code=403, detail="只能查看自己负责项目的合同")
     return APIResponse(data=_contract_to_dict(c))
 
 
 @router.post("")
-def create_contract(req: ContractCreate, current_user: dict = Depends(require_roles("admin", "project_manager", "procurement"))):
+def create_contract(req: ContractCreate, current_user: dict = Depends(require_permission("contract:write"))):
     """Create contract."""
     contract_id = str(uuid.uuid4())[:8]
     contract_no = req.contract_no or _generate_contract_no(req.contract_type)
@@ -226,7 +269,7 @@ def create_contract(req: ContractCreate, current_user: dict = Depends(require_ro
 
 
 @router.put("/{contract_id}")
-def update_contract(contract_id: str, req: ContractUpdate, current_user: dict = Depends(require_roles("admin", "project_manager", "procurement"))):
+def update_contract(contract_id: str, req: ContractUpdate, current_user: dict = Depends(require_permission("contract:write"))):
     """Update contract."""
     try:
         c = ContractModel.get(ContractModel.make_pk(contract_id), ContractModel.make_sk())
@@ -238,19 +281,7 @@ def update_contract(contract_id: str, req: ContractUpdate, current_user: dict = 
         setattr(c, key, value)
 
     if req.attachments is not None:
-        from ..models.base import AttachmentMap
-        att_list = []
-        for a in req.attachments:
-            att = AttachmentMap()
-            att.file_id = a.get("file_id", "")
-            att.file_name = a.get("file_name", "")
-            att.file_type = a.get("file_type", "")
-            att.file_size = a.get("file_size", 0)
-            att.s3_key = a.get("s3_key", "")
-            att.upload_time = a.get("upload_time", "")
-            att.uploaded_by = a.get("uploaded_by", "")
-            att_list.append(att)
-        c.attachments = att_list
+        c.attachments = to_attachment_maps(req.attachments)
 
     if req.payment_nodes is not None:
         from ..models.base import PaymentNodeMap
@@ -274,7 +305,7 @@ def update_contract(contract_id: str, req: ContractUpdate, current_user: dict = 
 
 
 @router.get("/{contract_id}/payments")
-def list_payments(contract_id: str, current_user: dict = Depends(get_current_user)):
+def list_payments(contract_id: str, current_user: dict = Depends(require_permission("contract:options"))):
     """List payment records for a contract."""
     try:
         c = ContractModel.get(ContractModel.make_pk(contract_id), ContractModel.make_sk())
@@ -290,7 +321,7 @@ def list_payments(contract_id: str, current_user: dict = Depends(get_current_use
 
 
 @router.post("/{contract_id}/payment")
-def add_payment(contract_id: str, payment: dict, current_user: dict = Depends(require_roles("admin", "finance"))):
+def add_payment(contract_id: str, payment: dict, current_user: dict = Depends(require_permission("contract:payment"))):
     """Add a payment record to contract. Only finance/admin can do this."""
     try:
         c = ContractModel.get(ContractModel.make_pk(contract_id), ContractModel.make_sk())
@@ -328,7 +359,7 @@ def add_payment(contract_id: str, payment: dict, current_user: dict = Depends(re
 
 
 @router.delete("/{contract_id}")
-def delete_contract(contract_id: str, current_user: dict = Depends(require_roles("admin"))):
+def delete_contract(contract_id: str, current_user: dict = Depends(require_permission("contract:delete"))):
     """Delete contract (admin only)."""
     try:
         c = ContractModel.get(ContractModel.make_pk(contract_id), ContractModel.make_sk())

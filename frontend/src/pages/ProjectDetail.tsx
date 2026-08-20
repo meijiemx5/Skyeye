@@ -1,10 +1,14 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Card, Row, Col, Statistic, Typography, Tabs, Table, Tag, Spin, Descriptions, Breadcrumb, Button, message } from 'antd';
-import { ArrowLeftOutlined } from '@ant-design/icons';
+import { Card, Row, Col, Statistic, Typography, Tabs, Table, Tag, Spin, Descriptions, Breadcrumb, Button, message, Progress, Alert, Space } from 'antd';
+import { ArrowLeftOutlined, FileDoneOutlined } from '@ant-design/icons';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
-import { projectApi, contractApi, reimbursementApi, inventoryApi, analysisApi, acceptanceApi, reimburseCategoryApi } from '../api/client';
+import { projectApi, contractApi, reimbursementApi, inventoryApi, analysisApi, acceptanceApi, reimburseCategoryApi, alertApi } from '../api/client';
 import FileManager from '../components/FileManager';
+import InvoiceBatchManager from '../components/InvoiceBatchManager';
+import ChecklistDots from '../components/ChecklistDots';
+import { CHECKLIST_STATUS, REIMBURSE_STATUS, formatMoney } from '../utils/constants';
+import { can } from '../utils/permissions';
 
 const { Title } = Typography;
 const COLORS = ['#1677ff', '#52c41a', '#faad14', '#ff4d4f', '#722ed1', '#13c2c2'];
@@ -20,10 +24,7 @@ const contractStatusMap: Record<string, { label: string; color: string }> = {
   draft: { label: '待签订', color: 'default' }, signed: { label: '已签订', color: 'blue' },
   fulfilled: { label: '已履行', color: 'green' }, terminated: { label: '已终止', color: 'red' },
 };
-const reimburseStatusMap: Record<string, { label: string; color: string }> = {
-  pending_review: { label: '待审核', color: 'orange' }, manager_approved: { label: '主管已审', color: 'blue' },
-  finance_approved: { label: '财务已审', color: 'cyan' }, paid: { label: '已付款', color: 'green' }, rejected: { label: '已驳回', color: 'red' },
-};
+const reimburseStatusMap = REIMBURSE_STATUS;
 const legacyReimburseTypeLabels: Record<string, string> = {
   material: '物料采购', travel: '差旅费', equipment_rental: '设备租赁', other: '其他',
 };
@@ -49,6 +50,8 @@ export default function ProjectDetail() {
   const [stockRecords, setStockRecords] = useState<any[]>([]);
   const [acceptances, setAcceptances] = useState<any[]>([]);
   const [analysis, setAnalysis] = useState<any>(null);
+  const [checklist, setChecklist] = useState<any>(null);
+  const [invoiceOpen, setInvoiceOpen] = useState(false);
   const [acceptanceFileRecord, setAcceptanceFileRecord] = useState<any>(null);
   const [contractFileRecord, setContractFileRecord] = useState<any>(null);
   const [reimburseFileRecord, setReimburseFileRecord] = useState<any>(null);
@@ -82,13 +85,14 @@ export default function ProjectDetail() {
   const loadAll = async (pid: string) => {
     setLoading(true);
     try {
-      const [pRes, cRes, rRes, sRes, accRes, aRes] = await Promise.allSettled([
+      const [pRes, cRes, rRes, sRes, accRes, aRes, clRes] = await Promise.allSettled([
         projectApi.get(pid),
         contractApi.list({ project_id: pid }),
         reimbursementApi.list({ project_id: pid }),
         inventoryApi.listRecords({ project_id: pid }),
         acceptanceApi.list({ project_id: pid }),
         analysisApi.projectAnalysis(pid),
+        alertApi.project(pid),
       ]);
       if (pRes.status === 'fulfilled') setProject(pRes.value.data.data);
       if (cRes.status === 'fulfilled') setContracts(cRes.value.data.data || []);
@@ -96,6 +100,7 @@ export default function ProjectDetail() {
       if (sRes.status === 'fulfilled') setStockRecords(sRes.value.data.data || []);
       if (accRes.status === 'fulfilled') setAcceptances(accRes.value.data.data || []);
       if (aRes.status === 'fulfilled') setAnalysis(aRes.value.data.data);
+      if (clRes.status === 'fulfilled') setChecklist(clRes.value.data.data);
     } catch (e: any) {
       message.error(e.response?.data?.detail || '加载失败');
     } finally { setLoading(false); }
@@ -108,12 +113,17 @@ export default function ProjectDetail() {
   const revenue = analysis?.revenue || {};
   const profit = analysis?.profit || {};
   const payment = analysis?.payment_progress || {};
+  const budget = analysis?.budget || {};
+  const invoice = analysis?.invoice_progress || {};
+  const clientContracts = contracts.filter((c: any) => c.contract_type === 'client');
 
   const pieData = [
     { name: '采购成本', value: cost.supplier_cost || 0 },
     { name: '施工成本', value: cost.construction_cost || 0 },
     { name: '报销成本', value: cost.reimbursement_cost || 0 },
-    { name: '物料成本', value: cost.material_cost || 0 },
+    // 材料成本拆两条口径：项目直采入库 / 项目领用出库
+    { name: '材料(入库)', value: cost.material_cost_in || 0 },
+    { name: '材料(领用出库)', value: cost.material_cost_out || 0 },
   ].filter(d => d.value > 0);
 
   const paymentBars = [
@@ -180,11 +190,41 @@ export default function ProjectDetail() {
       </div>
 
       <Row gutter={16} style={{ marginBottom: 16 }}>
-        <Col xs={12} md={6}><Card size="small"><Statistic title="甲方合同金额" value={revenue.client_contract_amount || 0} prefix="¥" precision={2} /></Card></Col>
-        <Col xs={12} md={6}><Card size="small"><Statistic title="总成本" value={cost.total_cost || 0} prefix="¥" precision={2} /></Card></Col>
-        <Col xs={12} md={6}><Card size="small"><Statistic title="利润" value={profit.profit || 0} prefix="¥" precision={2} valueStyle={{ color: (profit.profit || 0) >= 0 ? '#52c41a' : '#ff4d4f' }} /></Card></Col>
-        <Col xs={12} md={6}><Card size="small"><Statistic title="利润率" value={profit.profit_rate || 0} suffix="%" precision={2} /></Card></Col>
+        <Col xs={12} md={5}><Card size="small"><Statistic title="甲方合同金额" value={revenue.client_contract_amount || 0} prefix="¥" precision={2} /></Card></Col>
+        <Col xs={12} md={5}><Card size="small"><Statistic title="总成本" value={cost.total_cost || 0} prefix="¥" precision={2} /></Card></Col>
+        <Col xs={12} md={5}><Card size="small"><Statistic title="利润" value={profit.profit || 0} prefix="¥" precision={2} valueStyle={{ color: (profit.profit || 0) >= 0 ? '#52c41a' : '#ff4d4f' }} /></Card></Col>
+        <Col xs={12} md={4}><Card size="small"><Statistic title="利润率" value={profit.profit_rate || 0} suffix="%" precision={2} /></Card></Col>
+        <Col xs={24} md={5}>
+          <Card size="small">
+            <Statistic
+              title={budget.has_budget ? `预算使用率（预算 ${formatMoney(budget.budget_amount)}）` : '项目预算'}
+              value={budget.has_budget ? budget.usage_rate : 0}
+              suffix={budget.has_budget ? '%' : ''}
+              precision={budget.has_budget ? 2 : 0}
+              valueStyle={{ color: budget.over_budget ? '#e5484d' : budget.near_budget ? '#f59e0b' : '#0f9d58' }}
+              formatter={budget.has_budget ? undefined : () => '未填写'}
+            />
+          </Card>
+        </Col>
       </Row>
+
+      {checklist && checklist.counts.overdue + checklist.counts.missing + checklist.counts.warning > 0 && (
+        <Alert
+          type={checklist.counts.overdue > 0 ? 'error' : 'warning'}
+          showIcon style={{ marginBottom: 16 }}
+          message={
+            <Space wrap>
+              <span>项目完整度 {checklist.health_score}%</span>
+              <ChecklistDots items={checklist.items} />
+              <span>
+                {checklist.items
+                  .filter((i: any) => i.applicable && i.status !== 'ok')
+                  .map((i: any) => i.label).join('、')} 待处理
+              </span>
+            </Space>
+          }
+        />
+      )}
 
       <Tabs items={[
         { key: 'info', label: '基本信息', children: (
@@ -194,11 +234,46 @@ export default function ProjectDetail() {
               <Descriptions.Item label="客户">{project.client_name || '-'}</Descriptions.Item>
               <Descriptions.Item label="负责人">{project.project_manager_name || '-'}</Descriptions.Item>
               <Descriptions.Item label="状态">{(() => { const st = projectStatusMap[project.status]; return st ? <Tag color={st.color}>{st.label}</Tag> : project.status; })()}</Descriptions.Item>
+              <Descriptions.Item label="项目预算">{project.budget_amount ? formatMoney(project.budget_amount) : <Tag color="orange">未填写</Tag>}</Descriptions.Item>
+              <Descriptions.Item label="项目报价">{project.quote_amount ? formatMoney(project.quote_amount) : <Tag color="orange">未填写</Tag>}</Descriptions.Item>
               <Descriptions.Item label="开始日期">{project.start_date || '-'}</Descriptions.Item>
               <Descriptions.Item label="结束日期">{project.end_date || '-'}</Descriptions.Item>
+              <Descriptions.Item label="预算附件">{project.budget_docs?.length ? `${project.budget_docs.length} 个` : '-'}</Descriptions.Item>
+              <Descriptions.Item label="报价附件">{project.quote_docs?.length ? `${project.quote_docs.length} 个` : '-'}</Descriptions.Item>
               <Descriptions.Item label="项目地址" span={2}>{project.address || '-'}</Descriptions.Item>
               <Descriptions.Item label="项目描述" span={2}>{project.description || '-'}</Descriptions.Item>
             </Descriptions>
+          </Card>
+        )},
+        { key: 'checklist', label: (
+          <span>
+            完整度预警
+            {!!checklist && checklist.counts.overdue > 0 && <Tag color="red" style={{ marginLeft: 6 }}>{checklist.counts.overdue}</Tag>}
+          </span>
+        ), children: (
+          <Card
+            title={`项目完整度 ${checklist?.health_score ?? 0}%`}
+            extra={<span>负责人：{checklist?.project_manager_name || '未指派'}</span>}
+          >
+            <Table
+              size="small" pagination={false} rowKey="key"
+              dataSource={checklist?.items || []}
+              columns={[
+                { title: '组成部分', dataIndex: 'label', key: 'label', width: 110 },
+                { title: '状态', dataIndex: 'status', key: 'status', width: 100,
+                  render: (s: string, r: any) => r.applicable
+                    ? <Tag color={CHECKLIST_STATUS[s]?.color}>{CHECKLIST_STATUS[s]?.label}</Tag>
+                    : <Tag>不适用</Tag> },
+                { title: '说明', dataIndex: 'message', key: 'message' },
+                { title: '期限', dataIndex: 'due_date', key: 'due_date', width: 110, render: (v: string) => v || '-' },
+                { title: '逾期', dataIndex: 'days_overdue', key: 'days_overdue', width: 80,
+                  render: (v: number) => v > 0 ? <Tag color="red">{v} 天</Tag> : '-' },
+                { title: '负责人', key: 'owner', width: 110,
+                  render: (_: any, r: any) => r.owner_name || ({
+                    project_manager: '项目负责人', procurement: '采购专员', finance: '财务',
+                  }[r.owner_role as string] || r.owner_role) },
+              ]}
+            />
           </Card>
         )},
         { key: 'contracts', label: `关联合同 (${contracts.length})`, children: (
@@ -212,6 +287,36 @@ export default function ProjectDetail() {
         )},
         { key: 'acceptances', label: `验收资料 (${acceptances.length})`, children: (
           <Table columns={acceptanceColumns} dataSource={acceptances} rowKey="acceptance_id" size="middle" />
+        )},
+        { key: 'invoices', label: '发票开票', children: (
+          <Card
+            title="开票进度（分批次开具，一批次可含多张不同税率的发票）"
+            extra={
+              <Button type="primary" icon={<FileDoneOutlined />} onClick={() => setInvoiceOpen(true)}>
+                {can('invoice:manage') ? '管理发票批次' : '查看发票批次'}
+              </Button>
+            }
+          >
+            <Progress
+              percent={Number(Math.min(invoice.invoiced_rate || 0, 100).toFixed(2))}
+              status={invoice.fully_invoiced ? 'success' : 'active'}
+            />
+            <Descriptions column={{ xs: 1, sm: 3 }} bordered size="small" style={{ marginTop: 12 }}>
+              <Descriptions.Item label="甲方合同金额">{formatMoney(invoice.contract_amount)}</Descriptions.Item>
+              <Descriptions.Item label="已开票">{formatMoney(invoice.invoiced_amount)}</Descriptions.Item>
+              <Descriptions.Item label="未开票">{formatMoney(invoice.remaining_amount)}</Descriptions.Item>
+            </Descriptions>
+            {invoice.by_category && Object.keys(invoice.by_category).length > 0 && (
+              <Space wrap style={{ marginTop: 12 }}>
+                {Object.entries(invoice.by_category).map(([cat, v]: [string, any]) => (
+                  <Tag key={cat} color="blue">
+                    {({ material: '材料', construction: '施工', service: '技术服务', other: '其他' } as Record<string, string>)[cat] || cat}
+                    ：{formatMoney(v.amount_with_tax)}（{v.count} 张）
+                  </Tag>
+                ))}
+              </Space>
+            )}
+          </Card>
         )},
         { key: 'analysis', label: '成本分析', children: (
           <>
@@ -249,20 +354,44 @@ export default function ProjectDetail() {
             </Row>
             <Card title="详细数据">
               <Descriptions column={{ xs: 1, sm: 2, md: 3 }} bordered size="small">
-                <Descriptions.Item label="甲方合同金额">¥{(revenue.client_contract_amount || 0).toLocaleString()}</Descriptions.Item>
-                <Descriptions.Item label="甲方已收款">¥{(revenue.client_paid_amount || 0).toLocaleString()}</Descriptions.Item>
-                <Descriptions.Item label="甲方未收款">¥{(revenue.client_unpaid_amount || 0).toLocaleString()}</Descriptions.Item>
-                <Descriptions.Item label="采购成本">¥{(cost.supplier_cost || 0).toLocaleString()}</Descriptions.Item>
-                <Descriptions.Item label="施工成本">¥{(cost.construction_cost || 0).toLocaleString()}</Descriptions.Item>
-                <Descriptions.Item label="报销成本">¥{(cost.reimbursement_cost || 0).toLocaleString()}</Descriptions.Item>
-                <Descriptions.Item label="物料成本">¥{(cost.material_cost || 0).toLocaleString()}</Descriptions.Item>
-                <Descriptions.Item label="总成本">¥{(cost.total_cost || 0).toLocaleString()}</Descriptions.Item>
-                <Descriptions.Item label="利润">¥{(profit.profit || 0).toLocaleString()}（{profit.profit_rate || 0}%）</Descriptions.Item>
+                <Descriptions.Item label="甲方合同金额">{formatMoney(revenue.client_contract_amount)}</Descriptions.Item>
+                <Descriptions.Item label="甲方已收款">{formatMoney(revenue.client_paid_amount)}</Descriptions.Item>
+                <Descriptions.Item label="甲方未收款">{formatMoney(revenue.client_unpaid_amount)}</Descriptions.Item>
+                <Descriptions.Item label="采购成本">{formatMoney(cost.supplier_cost)}</Descriptions.Item>
+                <Descriptions.Item label="施工成本">{formatMoney(cost.construction_cost)}</Descriptions.Item>
+                <Descriptions.Item label="报销成本">{formatMoney(cost.reimbursement_cost)}</Descriptions.Item>
+                <Descriptions.Item label="材料成本(项目直采入库)">{formatMoney(cost.material_cost_in)}</Descriptions.Item>
+                <Descriptions.Item label="材料成本(项目领用出库)">{formatMoney(cost.material_cost_out)}</Descriptions.Item>
+                <Descriptions.Item label="材料成本合计">{formatMoney(cost.material_cost)}</Descriptions.Item>
+                <Descriptions.Item label="总成本">{formatMoney(cost.total_cost)}</Descriptions.Item>
+                <Descriptions.Item label="利润">{formatMoney(profit.profit)}（{profit.profit_rate || 0}%）</Descriptions.Item>
+                <Descriptions.Item label="预算">
+                  {budget.has_budget
+                    ? <span>{formatMoney(budget.budget_amount)}（已用 {budget.usage_rate}%{budget.over_budget ? '，已超支' : ''}）</span>
+                    : <Tag color="orange">未填写</Tag>}
+                </Descriptions.Item>
               </Descriptions>
+              {!!cost.material_cost_estimated_count && (
+                <Alert
+                  type="warning" showIcon style={{ marginTop: 12 }}
+                  message={`有 ${cost.material_cost_estimated_count} 条出入库记录没有记录当时单价，已按物料当前单价估算，金额可能与实际有偏差。`}
+                />
+              )}
             </Card>
           </>
         )},
       ]} />
+
+      {invoiceOpen && (
+        <InvoiceBatchManager
+          open={invoiceOpen}
+          title={project.project_name}
+          projectId={id}
+          contractOptions={clientContracts}
+          canManage={can('invoice:manage')}
+          onClose={() => { setInvoiceOpen(false); if (id) loadAll(id); }}
+        />
+      )}
 
       {contractFileRecord && (
         <FileManager

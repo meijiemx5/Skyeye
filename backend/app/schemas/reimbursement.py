@@ -50,6 +50,30 @@ class ReimbursementPayment(BaseModel):
     payment_time: str
 
 
+class ReimbursementReceipt(BaseModel):
+    """项目收款确认 - 硬门禁; admin 可 skip=True 强制跳过但必须写原因。"""
+    contract_id: Optional[str] = None
+    contract_no: Optional[str] = None
+    receipt_amount: Optional[float] = None
+    receipt_date: Optional[str] = None
+    note: Optional[str] = None
+    skip: bool = False
+    skip_reason: Optional[str] = None
+
+
+class ReimbursementDocument(BaseModel):
+    """创建报销单据 - 单据号留空则自动生成 BX-YYYYMMDD-XXXX。"""
+    document_no: Optional[str] = None
+    note: Optional[str] = None
+
+
+class ReimbursementVoucher(BaseModel):
+    """生成会计凭证 - 凭证号留空则自动生成 PZ-YYYYMMDD-XXXX。"""
+    voucher_no: Optional[str] = None
+    note: Optional[str] = None
+    voucher_files: Optional[List[dict]] = None
+
+
 class ReimbursementOut(BaseModel):
     reimburse_id: str
     applicant_id: str
@@ -74,5 +98,22 @@ class ReimbursementOut(BaseModel):
     payment_failure_reason: Optional[str] = None
     vouchers: List[AttachmentSchema] = []
     payment_receipt: List[AttachmentSchema] = []
+    # 链路留痕: 项目收款 → 单据 → 凭证
+    receipt_contract_id: Optional[str] = None
+    receipt_contract_no: Optional[str] = None
+    receipt_amount: Optional[float] = None
+    receipt_date: Optional[str] = None
+    receipt_note: Optional[str] = None
+    receipt_confirmed_at: Optional[str] = None
+    receipt_confirmed_by_name: Optional[str] = None
+    receipt_skipped: Optional[bool] = None
+    receipt_skip_reason: Optional[str] = None
+    document_no: Optional[str] = None
+    document_created_at: Optional[str] = None
+    document_created_by_name: Optional[str] = None
+    voucher_no: Optional[str] = None
+    voucher_generated_at: Optional[str] = None
+    voucher_generated_by_name: Optional[str] = None
+    voucher_files: List[AttachmentSchema] = []
     created_at: str
     updated_at: str

@@ -28,7 +28,7 @@ export default function Inventory() {
   const [projectContracts, setProjectContracts] = useState<any[]>([]);
   const [recordFilters, setRecordFilters] = useState<{ record_type?: string; project_id?: string }>({});
 
-  useEffect(() => { loadAll(); projectApi.list().then(r => setProjects(r.data.data || [])).catch(() => {}); }, []);
+  useEffect(() => { loadAll(); projectApi.options().then(r => setProjects(r.data.data || [])).catch(() => {}); }, []);
 
   const loadProjectContracts = async (project_id?: string) => {
     if (!project_id) { setProjectContracts([]); return; }

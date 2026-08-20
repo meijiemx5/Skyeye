@@ -26,7 +26,7 @@ export default function Acceptances() {
   const canEdit = ['admin', 'project_manager'].includes(user.role);
   const canDelete = user.role === 'admin';
 
-  useEffect(() => { loadData(); projectApi.list().then(r => setProjects(r.data.data || [])).catch(() => {}); }, []);
+  useEffect(() => { loadData(); projectApi.options().then(r => setProjects(r.data.data || [])).catch(() => {}); }, []);
   const loadData = async () => {
     setLoading(true);
     try { const res = await acceptanceApi.list(); setData(res.data.data || []); } catch {} finally { setLoading(false); }

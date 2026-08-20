@@ -48,6 +48,8 @@ export const authApi = {
 // Project API
 export const projectApi = {
   list: (params?: any) => client.get('/api/projects', { params }),
+  // 精简选项 - 所有角色可用，用于填项目下拉框
+  options: () => client.get('/api/projects/options'),
   get: (id: string) => client.get(`/api/projects/${id}`),
   create: (data: any) => client.post('/api/projects', data),
   update: (id: string, data: any) => client.put(`/api/projects/${id}`, data),
@@ -57,6 +59,8 @@ export const projectApi = {
 // Contract API
 export const contractApi = {
   list: (params?: any) => client.get('/api/contracts', { params }),
+  // 精简选项 - 财务/采购可用（付款、报销收款确认）
+  options: (params?: any) => client.get('/api/contracts/options', { params }),
   get: (id: string) => client.get(`/api/contracts/${id}`),
   create: (data: any) => client.post('/api/contracts', data),
   update: (id: string, data: any) => client.put(`/api/contracts/${id}`, data),
@@ -66,15 +70,42 @@ export const contractApi = {
   getPayments: (id: string) => client.get(`/api/contracts/${id}/payments`),
 };
 
-// Reimbursement API
+// Reimbursement API - 链路: 提交 → 项目收款 → 创建单据 → 财务审核 → 凭证生成 → 付款
 export const reimbursementApi = {
   list: (params?: any) => client.get('/api/reimbursements', { params }),
   get: (id: string) => client.get(`/api/reimbursements/${id}`),
   create: (data: any) => client.post('/api/reimbursements', data),
   update: (id: string, data: any) => client.put(`/api/reimbursements/${id}`, data),
   audit: (id: string, data: any) => client.post(`/api/reimbursements/${id}/audit`, data),
+  confirmReceipt: (id: string, data: any) => client.post(`/api/reimbursements/${id}/confirm-receipt`, data),
+  createDocument: (id: string, data: any) => client.post(`/api/reimbursements/${id}/create-document`, data),
+  generateVoucher: (id: string, data: any) => client.post(`/api/reimbursements/${id}/generate-voucher`, data),
   pay: (id: string, data: any) => client.post(`/api/reimbursements/${id}/pay`, data),
   delete: (id: string) => client.delete(`/api/reimbursements/${id}`),
+};
+
+// Invoice API - 分批次开票，一个批次多张不同税率的发票
+export const invoiceApi = {
+  listBatches: (params?: any) => client.get('/api/invoices/batches', { params }),
+  getBatch: (batchId: string) => client.get(`/api/invoices/batches/${batchId}`),
+  createBatch: (data: any) => client.post('/api/invoices/batches', data),
+  updateBatch: (batchId: string, data: any) => client.put(`/api/invoices/batches/${batchId}`, data),
+  deleteBatch: (batchId: string) => client.delete(`/api/invoices/batches/${batchId}`),
+  addInvoice: (batchId: string, data: any) => client.post(`/api/invoices/batches/${batchId}/items`, data),
+  updateInvoice: (batchId: string, invoiceId: string, data: any) => client.put(`/api/invoices/batches/${batchId}/items/${invoiceId}`, data),
+  deleteInvoice: (batchId: string, invoiceId: string) => client.delete(`/api/invoices/batches/${batchId}/items/${invoiceId}`),
+  summary: (params: { contract_id?: string; project_id?: string }) => client.get('/api/invoices/summary', { params }),
+};
+
+// 预警看板 + 待办中心
+export const alertApi = {
+  board: (params?: any) => client.get('/api/alerts/board', { params }),
+  project: (projectId: string) => client.get(`/api/alerts/project/${projectId}`),
+};
+
+export const todoApi = {
+  list: (params?: any) => client.get('/api/todos', { params }),
+  count: () => client.get('/api/todos/count'),
 };
 
 // Acceptance API

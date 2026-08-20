@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react';
 import { Table, Button, Modal, Form, Input, Select, InputNumber, DatePicker, Space, Tag, message, Popconfirm, Typography, Card, Row, Col, Statistic } from 'antd';
-import { PlusOutlined, DollarOutlined } from '@ant-design/icons';
+import { PlusOutlined, DollarOutlined, FileDoneOutlined } from '@ant-design/icons';
 import { contractApi, projectApi } from '../api/client';
 import FileUpload, { FileInfo } from '../components/FileUpload';
 import FileManager from '../components/FileManager';
+import InvoiceBatchManager from '../components/InvoiceBatchManager';
+import { can } from '../utils/permissions';
 import dayjs from 'dayjs';
 
 const { Title } = Typography;
@@ -31,6 +33,7 @@ export default function Contracts() {
   const [fileRecord, setFileRecord] = useState<any>(null);
   const [payRecord, setPayRecord] = useState<any>(null);
   const [detailRecord, setDetailRecord] = useState<any>(null);
+  const [invoiceRecord, setInvoiceRecord] = useState<any>(null);
   const [form] = Form.useForm();
   const [payForm] = Form.useForm();
   const user = JSON.parse(localStorage.getItem('user') || '{}');
@@ -42,7 +45,7 @@ export default function Contracts() {
   useEffect(() => { loadData(); }, [filterType, filterProject, appliedKeyword, page, pageSize]);
 
   const loadProjects = async () => {
-    try { const res = await projectApi.list(); setProjects(res.data.data || []); } catch {}
+    try { const res = await projectApi.options(); setProjects(res.data.data || []); } catch {}
   };
 
   const loadData = async () => {
@@ -82,8 +85,12 @@ export default function Contracts() {
     { title: '类型', dataIndex: 'contract_type', key: 'contract_type', render: (t: string) => typeMap[t] || t },
     { title: '合同主体', dataIndex: 'party_name', key: 'party_name' },
     { title: '金额(含税)', dataIndex: 'amount_with_tax', key: 'amount_with_tax', render: (v: number) => v ? `¥${v.toLocaleString()}` : '-' },
-    { title: '发票金额', dataIndex: 'invoice_amount', key: 'invoice_amount', render: (v: number) => v ? `¥${v.toLocaleString()}` : '-' },
-    { title: '开票日期', dataIndex: 'invoice_date', key: 'invoice_date' },
+    // 发票分批次开具（一批次可含多张不同税率的发票），进入弹窗管理
+    { title: '发票', key: 'invoices', width: 110, render: (_: any, r: any) => (
+      <Button type="link" size="small" icon={<FileDoneOutlined />} onClick={() => setInvoiceRecord(r)}>
+        {r.invoice_amount ? `¥${r.invoice_amount.toLocaleString()}` : '开票管理'}
+      </Button>
+    ) },
     { title: '已付款', key: 'paid_amount', render: (_: any, r: any) => <Space><Button type="link" size="small" style={{ padding: 0 }} onClick={() => setDetailRecord(r)}>{r.paid_amount ? `¥${r.paid_amount.toLocaleString()}` : '¥0'}</Button>{canPay && <Button type="link" size="small" icon={<DollarOutlined />} onClick={() => { setPayRecord(r); payForm.resetFields(); }}>付款</Button>}</Space> },
     { title: '状态', dataIndex: 'status', key: 'status', render: (s: string) => { const st = statusMap[s]; return st ? <Tag color={st.color}>{st.label}</Tag> : s; } },
     { title: '附件', key: 'attachments', width: 80, render: (_: any, record: any) => <Button type="link" size="small" onClick={() => setFileRecord(record)}>{record.attachments?.length ? `${record.attachments.length}个` : '管理'}</Button> },
@@ -172,6 +179,15 @@ export default function Contracts() {
           <Form.Item name="note" label="备注"><Input.TextArea rows={2} /></Form.Item>
         </Form>
       </Modal>
+      {invoiceRecord && (
+        <InvoiceBatchManager
+          open={!!invoiceRecord}
+          title={`${invoiceRecord.contract_no} ${invoiceRecord.contract_name || ''}`}
+          contractId={invoiceRecord.contract_id}
+          canManage={can('invoice:manage')}
+          onClose={() => { setInvoiceRecord(null); loadData(); }}
+        />
+      )}
       <Modal title={`付款明细 - ${detailRecord?.contract_name || ''}`} open={!!detailRecord} onCancel={() => setDetailRecord(null)} footer={null} width={640}>
         <Table size="small" rowKey={(_, i) => String(i)} pagination={false} dataSource={detailRecord?.payment_nodes || []}
           columns={[

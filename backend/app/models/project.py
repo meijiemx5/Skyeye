@@ -6,7 +6,7 @@ GSI1PK: PROJECT_STATUS#{status}
 GSI1SK: PROJECT#{project_id}
 """
 from pynamodb.attributes import UnicodeAttribute, NumberAttribute, ListAttribute
-from .base import BaseModel
+from .base import BaseModel, AttachmentMap
 
 
 class ProjectModel(BaseModel):
@@ -22,6 +22,12 @@ class ProjectModel(BaseModel):
     end_date = UnicodeAttribute(null=True)
     actual_end_date = UnicodeAttribute(null=True)
     address = UnicodeAttribute(null=True)
+
+    # 预算与报价 - 项目完整度预警的检查项，预算金额同时用于超支预警
+    budget_amount = NumberAttribute(null=True)
+    quote_amount = NumberAttribute(null=True)
+    budget_docs = ListAttribute(of=AttachmentMap, default=list)
+    quote_docs = ListAttribute(of=AttachmentMap, default=list)
 
     @staticmethod
     def make_pk(project_id: str) -> str:

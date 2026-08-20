@@ -14,6 +14,7 @@ import Inventory from './pages/Inventory';
 import Users from './pages/Users';
 import AuditLogs from './pages/AuditLogs';
 import UserGuide from './pages/UserGuide';
+import Todos from './pages/Todos';
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   const token = localStorage.getItem('token');
@@ -101,6 +102,7 @@ function App() {
             </PrivateRoute>
           }>
             <Route index element={<Dashboard />} />
+            <Route path="todos" element={<Todos />} />
             <Route path="projects" element={<Projects />} />
             <Route path="projects/:id" element={<ProjectDetail />} />
             <Route path="contracts" element={<Contracts />} />

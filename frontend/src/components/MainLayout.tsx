@@ -1,12 +1,13 @@
 import { useState, useEffect } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
-import { Layout, Menu, Button, Dropdown, Avatar, theme, Modal, Form, Input, message, Tag, Drawer, Grid } from 'antd';
+import { Layout, Menu, Button, Dropdown, Avatar, theme, Modal, Form, Input, message, Tag, Drawer, Grid, Badge } from 'antd';
 import {
   DashboardOutlined, ProjectOutlined, FileTextOutlined, AccountBookOutlined,
-  CheckCircleOutlined, InboxOutlined, UserOutlined, TagsOutlined,
+  CheckCircleOutlined, InboxOutlined, UserOutlined, TagsOutlined, CheckSquareOutlined,
   LogoutOutlined, MenuFoldOutlined, MenuUnfoldOutlined, KeyOutlined, FileSearchOutlined, QuestionCircleOutlined,
 } from '@ant-design/icons';
-import { authApi } from '../api/client';
+import { authApi, todoApi } from '../api/client';
+import { hasPermission } from '../utils/permissions';
 
 const { Header, Sider, Content } = Layout;
 
@@ -29,8 +30,11 @@ export default function MainLayout() {
   const screens = useBreakpoint();
   const isMobile = !screens.md;
 
+  const [todoCount, setTodoCount] = useState(0);
+
   const pageTitles: Record<string, string> = {
     '/': '工作台',
+    '/todos': '我的待办',
     '/projects': '项目管理',
     '/contracts': '合同管理',
     '/reimbursements': '报销管理',
@@ -46,6 +50,13 @@ export default function MainLayout() {
     const path = location.pathname.startsWith('/projects/') ? '/projects' : location.pathname;
     const pageTitle = pageTitles[path] || 'Skyeye';
     document.title = `${pageTitle} - Skyeye`;
+  }, [location.pathname]);
+
+  // 待办红点：换页时刷新，让"有事没做"一直看得见
+  useEffect(() => {
+    todoApi.count()
+      .then(r => setTodoCount(r.data.data?.total || 0))
+      .catch(() => {});
   }, [location.pathname]);
 
   const handleChangePassword = async () => {
@@ -69,10 +80,21 @@ export default function MainLayout() {
 
   const menuItems = [
     { key: '/', icon: <DashboardOutlined />, label: '工作台' },
-    { key: '/projects', icon: <ProjectOutlined />, label: '项目管理' },
-    { key: '/contracts', icon: <FileTextOutlined />, label: '合同管理' },
+    {
+      key: '/todos', icon: <CheckSquareOutlined />,
+      label: <Badge count={todoCount} offset={[10, 0]} size="small" overflowCount={99}>我的待办</Badge>,
+    },
+    // 项目列表 / 合同 / 验收资料仅管理员与项目负责人可见（与后端权限表一致）
+    ...(hasPermission(user.role, 'project:list') ? [
+      { key: '/projects', icon: <ProjectOutlined />, label: '项目管理' },
+    ] : []),
+    ...(hasPermission(user.role, 'contract:view') ? [
+      { key: '/contracts', icon: <FileTextOutlined />, label: '合同管理' },
+    ] : []),
     { key: '/reimbursements', icon: <AccountBookOutlined />, label: '报销管理' },
-    { key: '/acceptances', icon: <CheckCircleOutlined />, label: '验收资料' },
+    ...(hasPermission(user.role, 'acceptance:view') ? [
+      { key: '/acceptances', icon: <CheckCircleOutlined />, label: '验收资料' },
+    ] : []),
     { key: '/inventory', icon: <InboxOutlined />, label: '库存管理' },
     ...(user.role === 'admin' ? [
       { key: '/reimburse-categories', icon: <TagsOutlined />, label: '报销类型管理' },
