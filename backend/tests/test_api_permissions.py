@@ -31,6 +31,35 @@ def test_project_list_open_to_admin_and_pm(seeded, as_user, role):
     assert as_user(role).get("/api/projects").status_code == 200
 
 
+def test_project_keyword_matches_name_client_manager_and_address(store, client):
+    """搜索框要能用人名和地址搜到项目，不然只能背项目名。"""
+    p = seed_project(store, project_id="p9", name="晋中服务区视频覆盖", manager_id="u-pm")
+    p.client_name = "山西御锦智能"
+    p.address = "晋中市榆次区"
+    p.project_manager_name = "张三"
+    p.save()
+
+    for keyword in ("视频覆盖", "御锦", "张三", "榆次"):
+        found = client.get("/api/projects", params={"keyword": keyword}).json()["data"]
+        assert [x["project_id"] for x in found] == ["p9"], keyword
+
+    assert client.get("/api/projects", params={"keyword": "查无此项"}).json()["data"] == []
+
+
+def test_project_keyword_is_case_insensitive(store, client):
+    p = seed_project(store, project_id="p9", name="Skyeye 弱电改造")
+    p.save()
+    assert len(client.get("/api/projects", params={"keyword": "skyeye"}).json()["data"]) == 1
+
+
+def test_project_status_filter(seeded, client):
+    seed_project(seeded, project_id="p3", name="已完成的", status="completed")
+    active = client.get("/api/projects", params={"status": "active"}).json()["data"]
+    done = client.get("/api/projects", params={"status": "completed"}).json()["data"]
+    assert "p3" not in [p["project_id"] for p in active]
+    assert [p["project_id"] for p in done] == ["p3"]
+
+
 def test_project_manager_sees_only_their_own_projects(seeded, as_user):
     data = as_user("pm").get("/api/projects").json()["data"]
     assert [p["project_id"] for p in data] == ["p1"]

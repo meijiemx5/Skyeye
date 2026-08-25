@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Table, Button, Modal, Form, Input, Select, DatePicker, InputNumber, Space, Tag, message, Popconfirm, Typography, Row, Col, Progress } from 'antd';
-import { PlusOutlined, EyeOutlined } from '@ant-design/icons';
+import { PlusOutlined, EyeOutlined, SearchOutlined, ReloadOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { projectApi, alertApi } from '../api/client';
 import dayjs from 'dayjs';
@@ -8,15 +8,28 @@ import FileUpload, { FileInfo } from '../components/FileUpload';
 import ChecklistDots, { ChecklistItem } from '../components/ChecklistDots';
 import { formatMoney } from '../utils/constants';
 
-const { Title } = Typography;
+const { Title, Text } = Typography;
 const statusMap: Record<string, { label: string; color: string }> = {
   active: { label: '进行中', color: 'blue' }, completed: { label: '已完成', color: 'green' },
   suspended: { label: '已暂停', color: 'orange' }, cancelled: { label: '已取消', color: 'red' },
 };
+const statusOrder = Object.keys(statusMap);
+
+/** 完整度筛选：这一项只能在前端做，数据来自 /api/alerts/board 而不是项目列表接口 */
+const healthOptions = [
+  { value: 'overdue', label: '有逾期项' },
+  { value: 'incomplete', label: '有未完成项' },
+  { value: 'complete', label: '资料齐全' },
+];
+
+const textSorter = (a?: string, b?: string) => (a || '').localeCompare(b || '', 'zh-CN');
+const numberSorter = (a?: number, b?: number) => (Number(a) || 0) - (Number(b) || 0);
+
+interface Checklist { items: ChecklistItem[]; health_score: number; counts: Record<string, number>; }
 
 export default function Projects() {
   const [data, setData] = useState<any[]>([]);
-  const [checklists, setChecklists] = useState<Record<string, { items: ChecklistItem[]; health_score: number }>>({});
+  const [checklists, setChecklists] = useState<Record<string, Checklist>>({});
   const [loading, setLoading] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<any>(null);
@@ -28,13 +41,22 @@ export default function Projects() {
   const canEdit = ['admin', 'project_manager'].includes(user.role);
   const canDelete = user.role === 'admin';
 
-  useEffect(() => { loadData(); }, []);
+  // 服务端筛选（后端 list_projects 支持 status / keyword）
+  const [filters, setFilters] = useState<{ status?: string; keyword?: string }>({});
+  const [keywordInput, setKeywordInput] = useState('');
+  // 前端筛选：负责人是手填文本、完整度来自另一个接口，后端没有对应查询条件
+  const [managerFilter, setManagerFilter] = useState<string | undefined>();
+  const [healthFilter, setHealthFilter] = useState<string | undefined>();
 
-  const loadData = async () => {
+  useEffect(() => { loadData(); }, [filters.status, filters.keyword]);
+
+  const loadData = async (overrides?: typeof filters) => {
     setLoading(true);
     try {
+      const params: any = { ...(overrides ?? filters) };
+      Object.keys(params).forEach(k => { if (!params[k]) delete params[k]; });
       const [projectRes, boardRes] = await Promise.allSettled([
-        projectApi.list(),
+        projectApi.list(params),
         alertApi.board({ project_status: 'all' }),
       ]);
       if (projectRes.status === 'fulfilled') setData(projectRes.value.data.data || []);
@@ -45,6 +67,32 @@ export default function Projects() {
       }
     } catch {} finally { setLoading(false); }
   };
+
+  const resetFilters = () => {
+    setKeywordInput('');
+    setManagerFilter(undefined);
+    setHealthFilter(undefined);
+    setFilters({});
+    loadData({});
+  };
+
+  // 负责人选项从当前结果里取：项目负责人是手填文本，系统里没有可查的负责人档案
+  const managerOptions = useMemo(() => {
+    const names = [...new Set(data.map(p => p.project_manager_name).filter(Boolean))];
+    return names.sort((a, b) => textSorter(a, b)).map(n => ({ value: n, label: n }));
+  }, [data]);
+
+  const visibleData = useMemo(() => data.filter(p => {
+    if (managerFilter && p.project_manager_name !== managerFilter) return false;
+    if (healthFilter) {
+      const counts = checklists[p.project_id]?.counts;
+      if (!counts) return false;
+      if (healthFilter === 'overdue' && !counts.overdue) return false;
+      if (healthFilter === 'incomplete' && counts.ok >= counts.total) return false;
+      if (healthFilter === 'complete' && counts.ok < counts.total) return false;
+    }
+    return true;
+  }), [data, managerFilter, healthFilter, checklists]);
 
   const openModal = (record?: any) => {
     setEditing(record || null);
@@ -81,30 +129,42 @@ export default function Projects() {
 
   const columns = [
     { title: '项目名称', dataIndex: 'project_name', key: 'project_name',
+      sorter: (a: any, b: any) => textSorter(a.project_name, b.project_name),
       render: (name: string, r: any) => <a onClick={() => navigate(`/projects/${r.project_id}`)}>{name}</a> },
-    { title: '客户', dataIndex: 'client_name', key: 'client_name' },
-    { title: '负责人', dataIndex: 'project_manager_name', key: 'project_manager_name' },
-    { title: '预算', dataIndex: 'budget_amount', key: 'budget_amount', width: 120,
+    { title: '客户', dataIndex: 'client_name', key: 'client_name',
+      sorter: (a: any, b: any) => textSorter(a.client_name, b.client_name) },
+    { title: '负责人', dataIndex: 'project_manager_name', key: 'project_manager_name', width: 100,
+      sorter: (a: any, b: any) => textSorter(a.project_manager_name, b.project_manager_name) },
+    { title: '预算', dataIndex: 'budget_amount', key: 'budget_amount', width: 130,
+      sorter: (a: any, b: any) => numberSorter(a.budget_amount, b.budget_amount),
       render: (v: number) => v ? formatMoney(v) : <Tag color="orange">未填</Tag> },
-    { title: '报价', dataIndex: 'quote_amount', key: 'quote_amount', width: 120,
+    { title: '报价', dataIndex: 'quote_amount', key: 'quote_amount', width: 130,
+      sorter: (a: any, b: any) => numberSorter(a.quote_amount, b.quote_amount),
       render: (v: number) => v ? formatMoney(v) : <Tag color="orange">未填</Tag> },
-    { title: '完整度', key: 'checklist', width: 220, render: (_: any, r: any) => {
-      const checklist = checklists[r.project_id];
-      if (!checklist) return '-';
-      return (
-        <Space direction="vertical" size={2}>
-          <ChecklistDots items={checklist.items} />
-          <Progress
-            percent={checklist.health_score} size="small" style={{ width: 150 }}
-            strokeColor={checklist.health_score >= 90 ? '#0f9d58' : checklist.health_score >= 60 ? '#f59e0b' : '#e5484d'}
-          />
-        </Space>
-      );
-    } },
-    { title: '状态', dataIndex: 'status', key: 'status', width: 90, render: (s: string) => { const st = statusMap[s]; return st ? <Tag color={st.color}>{st.label}</Tag> : s; } },
-    { title: '开始日期', dataIndex: 'start_date', key: 'start_date', width: 110 },
-    { title: '结束日期', dataIndex: 'end_date', key: 'end_date', width: 110 },
-    { title: '操作', key: 'action', width: 220, render: (_: any, record: any) => (
+    { title: '完整度', key: 'checklist', width: 200,
+      sorter: (a: any, b: any) => numberSorter(
+        checklists[a.project_id]?.health_score, checklists[b.project_id]?.health_score),
+      render: (_: any, r: any) => {
+        const checklist = checklists[r.project_id];
+        if (!checklist) return '-';
+        return (
+          <Space direction="vertical" size={2}>
+            <ChecklistDots items={checklist.items} />
+            <Progress
+              percent={checklist.health_score} size="small" style={{ width: 150 }}
+              strokeColor={checklist.health_score >= 90 ? '#0f9d58' : checklist.health_score >= 60 ? '#f59e0b' : '#e5484d'}
+            />
+          </Space>
+        );
+      } },
+    { title: '状态', dataIndex: 'status', key: 'status', width: 90,
+      sorter: (a: any, b: any) => statusOrder.indexOf(a.status) - statusOrder.indexOf(b.status),
+      render: (s: string) => { const st = statusMap[s]; return st ? <Tag color={st.color}>{st.label}</Tag> : s; } },
+    { title: '开始日期', dataIndex: 'start_date', key: 'start_date', width: 120,
+      sorter: (a: any, b: any) => textSorter(a.start_date, b.start_date) },
+    { title: '结束日期', dataIndex: 'end_date', key: 'end_date', width: 120,
+      sorter: (a: any, b: any) => textSorter(a.end_date, b.end_date) },
+    { title: '操作', key: 'action', width: 220, fixed: 'right' as const, render: (_: any, record: any) => (
       <Space>
         <Button size="small" icon={<EyeOutlined />} onClick={() => navigate(`/projects/${record.project_id}`)}>详情</Button>
         {canEdit && <Button size="small" onClick={() => openModal(record)}>编辑</Button>}
@@ -113,13 +173,58 @@ export default function Projects() {
     )},
   ];
 
+  const filtered = visibleData.length !== data.length;
+
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
         <Title level={4} style={{ margin: 0 }}>项目管理</Title>
         {canEdit && <Button type="primary" icon={<PlusOutlined />} onClick={() => openModal()}>新建项目</Button>}
       </div>
-      <Table columns={columns} dataSource={data} rowKey="project_id" loading={loading} size="middle" scroll={{ x: 1400 }} />
+
+      <Row gutter={8} style={{ marginBottom: 12 }}>
+        <Col xs={24} sm={12} md={6}>
+          <Input.Search allowClear placeholder="搜索项目/客户/负责人/地址"
+            value={keywordInput}
+            onChange={(e) => setKeywordInput(e.target.value)}
+            onSearch={(v) => setFilters({ ...filters, keyword: v })} />
+        </Col>
+        <Col xs={12} sm={6} md={4}>
+          <Select allowClear placeholder="项目状态" style={{ width: '100%' }}
+            value={filters.status}
+            options={Object.entries(statusMap).map(([k, v]) => ({ value: k, label: v.label }))}
+            onChange={(v) => setFilters({ ...filters, status: v })} />
+        </Col>
+        <Col xs={12} sm={6} md={4}>
+          <Select allowClear placeholder="按负责人" style={{ width: '100%' }}
+            showSearch optionFilterProp="label"
+            value={managerFilter}
+            options={managerOptions}
+            onChange={setManagerFilter} />
+        </Col>
+        <Col xs={12} sm={6} md={4}>
+          <Select allowClear placeholder="按完整度" style={{ width: '100%' }}
+            value={healthFilter}
+            options={healthOptions}
+            onChange={setHealthFilter} />
+        </Col>
+        <Col xs={12} sm={6} md={6}>
+          <Space>
+            <Button icon={<SearchOutlined />} type="primary"
+              onClick={() => setFilters({ ...filters, keyword: keywordInput })}>查询</Button>
+            <Button icon={<ReloadOutlined />} onClick={resetFilters}>重置</Button>
+          </Space>
+        </Col>
+      </Row>
+
+      <Text type="secondary" style={{ fontSize: 12 }}>
+        共 {visibleData.length} 个项目{filtered ? `（已从 ${data.length} 个中筛选）` : ''} · 点击表头可排序
+      </Text>
+
+      <Table columns={columns} dataSource={visibleData} rowKey="project_id" loading={loading}
+        size="middle" scroll={{ x: 1500 }} style={{ marginTop: 8 }}
+        pagination={{ showSizeChanger: true, showTotal: (t) => `共 ${t} 条`, defaultPageSize: 20 }} />
+
       <Modal title={editing ? '编辑项目' : '新建项目'} open={modalOpen} onOk={handleSubmit} onCancel={() => setModalOpen(false)} width={680}>
         <Form form={form} layout="vertical">
           <Form.Item name="project_name" label="项目名称" rules={[{ required: true }]}><Input /></Form.Item>

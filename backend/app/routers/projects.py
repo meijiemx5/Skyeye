@@ -65,7 +65,14 @@ def list_projects(
     if status:
         results = [r for r in results if r.status == status]
     if keyword:
-        results = [r for r in results if keyword in (r.project_name or "") or keyword in (r.client_name or "")]
+        kw = keyword.lower()
+        results = [
+            r for r in results
+            if kw in (r.project_name or "").lower()
+            or kw in (r.client_name or "").lower()
+            or kw in (r.project_manager_name or "").lower()
+            or kw in (r.address or "").lower()
+        ]
 
     data = [_project_to_dict(p) for p in results]
     return APIResponse(data=data, total=len(data))
