@@ -39,6 +39,8 @@ export const authApi = {
   logout: () => client.post('/api/auth/logout'),
   changePassword: (data: { old_password: string; new_password: string }) => client.post('/api/auth/change-password', data),
   listUsers: () => client.get('/api/auth/users'),
+  // 精简用户选项 - 给项目指派负责人用（项目负责人也能调，listUsers 只有 admin）
+  userOptions: () => client.get('/api/auth/users/options'),
   createUser: (data: any) => client.post('/api/auth/users', data),
   updateUser: (userId: string, data: any) => client.put(`/api/auth/users/${userId}`, data),
   deleteUser: (userId: string) => client.delete(`/api/auth/users/${userId}`),

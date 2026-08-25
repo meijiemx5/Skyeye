@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Table, Button, Modal, Form, Input, Select, DatePicker, InputNumber, Space, Tag, message, Popconfirm, Typography, Row, Col, Progress } from 'antd';
+import { Table, Button, Modal, Form, Input, Select, DatePicker, InputNumber, Space, Tag, message, Popconfirm, Typography, Row, Col, Progress, Alert } from 'antd';
 import { PlusOutlined, EyeOutlined, SearchOutlined, ReloadOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
-import { projectApi, alertApi } from '../api/client';
+import { projectApi, alertApi, authApi } from '../api/client';
 import dayjs from 'dayjs';
 import FileUpload, { FileInfo } from '../components/FileUpload';
 import ChecklistDots, { ChecklistItem } from '../components/ChecklistDots';
@@ -24,6 +24,11 @@ const healthOptions = [
 
 const textSorter = (a?: string, b?: string) => (a || '').localeCompare(b || '', 'zh-CN');
 const numberSorter = (a?: number, b?: number) => (Number(a) || 0) - (Number(b) || 0);
+
+const roleLabels: Record<string, string> = {
+  admin: '管理员', finance: '财务', project_manager: '项目负责人',
+  procurement: '采购', construction: '施工', warehouse: '仓库',
+};
 
 interface Checklist { items: ChecklistItem[]; health_score: number; counts: Record<string, number>; }
 
@@ -47,8 +52,12 @@ export default function Projects() {
   // 前端筛选：负责人是手填文本、完整度来自另一个接口，后端没有对应查询条件
   const [managerFilter, setManagerFilter] = useState<string | undefined>();
   const [healthFilter, setHealthFilter] = useState<string | undefined>();
+  const [users, setUsers] = useState<any[]>([]);
 
   useEffect(() => { loadData(); }, [filters.status, filters.keyword]);
+  useEffect(() => {
+    authApi.userOptions().then(r => setUsers(r.data.data || [])).catch(() => {});
+  }, []);
 
   const loadData = async (overrides?: typeof filters) => {
     setLoading(true);
@@ -114,6 +123,9 @@ export default function Projects() {
     const values = await form.validateFields();
     if (values.start_date) values.start_date = values.start_date.format('YYYY-MM-DD');
     if (values.end_date) values.end_date = values.end_date.format('YYYY-MM-DD');
+    // 编辑时把"清空负责人"表达成空串：后端按 exclude_none 处理请求，
+    // 传 undefined 会被丢掉，负责人就清不掉了
+    if (editing) values.project_manager_id = values.project_manager_id || '';
     values.budget_docs = budgetDocs;
     values.quote_docs = quoteDocs;
     try {
@@ -133,8 +145,15 @@ export default function Projects() {
       render: (name: string, r: any) => <a onClick={() => navigate(`/projects/${r.project_id}`)}>{name}</a> },
     { title: '客户', dataIndex: 'client_name', key: 'client_name',
       sorter: (a: any, b: any) => textSorter(a.client_name, b.client_name) },
-    { title: '负责人', dataIndex: 'project_manager_name', key: 'project_manager_name', width: 100,
-      sorter: (a: any, b: any) => textSorter(a.project_manager_name, b.project_manager_name) },
+    { title: '负责人', dataIndex: 'project_manager_name', key: 'project_manager_name', width: 130,
+      sorter: (a: any, b: any) => textSorter(a.project_manager_name, b.project_manager_name),
+      render: (name: string, r: any) => {
+        if (!name) return <Tag color="orange">未指派</Tag>;
+        // 只有名字没有账号 → 本人收不到待办，标出来让管理员补
+        return r.project_manager_id
+          ? name
+          : <Space size={4}><span>{name}</span><Tag color="orange">未关联账号</Tag></Space>;
+      } },
     { title: '预算', dataIndex: 'budget_amount', key: 'budget_amount', width: 130,
       sorter: (a: any, b: any) => numberSorter(a.budget_amount, b.budget_amount),
       render: (v: number) => v ? formatMoney(v) : <Tag color="orange">未填</Tag> },
@@ -230,8 +249,26 @@ export default function Projects() {
           <Form.Item name="project_name" label="项目名称" rules={[{ required: true }]}><Input /></Form.Item>
           <Row gutter={12}>
             <Col span={12}><Form.Item name="client_name" label="客户名称"><Input /></Form.Item></Col>
-            <Col span={12}><Form.Item name="project_manager_name" label="项目负责人"><Input /></Form.Item></Col>
+            <Col span={12}>
+              <Form.Item
+                name="project_manager_id" label="项目负责人"
+                tooltip="必须选择系统账号：预警和待办按账号派发，只写名字的话提醒不到本人"
+              >
+                <Select allowClear showSearch optionFilterProp="label" placeholder="选择负责人账号"
+                  options={users.map(u => ({
+                    value: u.user_id,
+                    label: `${u.display_name || u.username}（${roleLabels[u.role] || u.role}）`,
+                  }))} />
+              </Form.Item>
+            </Col>
           </Row>
+          {/* 存量项目的负责人是手填文本，没有账号关联 —— 提醒重新选一次，否则收不到待办 */}
+          {editing && !editing.project_manager_id && editing.project_manager_name && (
+            <Alert
+              type="warning" showIcon style={{ marginBottom: 16 }}
+              message={`当前负责人「${editing.project_manager_name}」没有关联系统账号，本人收不到项目待办与预警，请重新选择。`}
+            />
+          )}
           <Row gutter={12}>
             <Col span={12}>
               <Form.Item name="budget_amount" label="项目预算" tooltip="预算用于成本超支预警，未填写会在项目看板亮灯">

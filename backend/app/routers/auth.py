@@ -11,6 +11,7 @@ from ..utils.auth import (
     hash_password, verify_password, create_access_token,
     get_current_user, require_roles
 )
+from ..utils.permissions import require_permission
 
 router = APIRouter(prefix="/api/auth", tags=["认证管理"])
 
@@ -178,6 +179,28 @@ def list_users(current_user: dict = Depends(require_roles("admin"))):
             "created_at": u.created_at,
         })
     return APIResponse(data=result, total=len(result))
+
+
+@router.get("/users/options")
+def list_user_options(current_user: dict = Depends(require_permission("user:options"))):
+    """精简用户选项 - 给项目指派负责人用，只返回启用的账号，不含手机/邮箱等信息。
+
+    完整的用户管理接口仍然只有 admin 能调；项目负责人也要能编辑自己项目的负责人，
+    所以这里单独开一个粒度更小的接口。
+    """
+    users = [u for u in UserModel.scan(filter_condition=UserModel.entity_type == "user")
+             if u.is_active]
+    data = [
+        {
+            "user_id": u.user_id,
+            "username": u.username,
+            "display_name": u.display_name,
+            "role": u.role,
+        }
+        for u in users
+    ]
+    data.sort(key=lambda x: (x["role"], x["display_name"] or ""))
+    return APIResponse(data=data, total=len(data))
 
 
 @router.post("/users")

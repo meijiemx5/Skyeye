@@ -23,6 +23,9 @@ ALL_ROLES = (
 # NOTE: HZY 2026-08-20 — 项目列表/合同/验收资料 仅管理员、项目负责人可查看。
 # 财务与采购改用 `*:options` 精简接口完成付款、收款确认等本职工作。
 PERMISSION_ROLES: dict[str, tuple[str, ...]] = {
+    # 用户
+    # 精简用户选项：给项目指派负责人用。完整用户管理仍然只有 admin。
+    "user:options": ("admin", "project_manager"),
     # 项目
     "project:list": ("admin", "project_manager"),
     "project:options": ALL_ROLES,

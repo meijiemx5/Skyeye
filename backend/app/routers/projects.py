@@ -10,6 +10,7 @@ from pynamodb.exceptions import DoesNotExist
 from typing import Optional
 
 from ..models.project import ProjectModel
+from ..models.user import UserModel
 from ..schemas.project import ProjectCreate, ProjectUpdate
 from ..schemas.common import APIResponse
 from ..utils.attachments import to_attachment_maps, attachment_dicts
@@ -42,6 +43,21 @@ def _project_to_dict(p) -> dict:
         "created_at": p.created_at,
         "updated_at": p.updated_at,
     }
+
+
+def _resolve_manager(manager_id: str) -> UserModel:
+    """Load the user being assigned as project manager, validating the reference.
+
+    负责人姓名一律取自用户档案，不采信前端传值 —— 否则 id 和 name 会各说各话，
+    预警派单按 id、界面显示按 name，最后没人知道该找谁。
+    """
+    try:
+        user = UserModel.get(UserModel.make_pk(manager_id), UserModel.make_sk())
+    except DoesNotExist:
+        raise HTTPException(status_code=400, detail="所选项目负责人不存在")
+    if not user.is_active:
+        raise HTTPException(status_code=400, detail=f"账号「{user.display_name}」已禁用，不能指派为负责人")
+    return user
 
 
 def scan_projects(current_user: dict | None = None) -> list:
@@ -121,6 +137,9 @@ def create_project(req: ProjectCreate, current_user: dict = Depends(require_perm
     project.project_name = req.project_name
     project.project_manager_id = req.project_manager_id
     project.project_manager_name = req.project_manager_name
+    if req.project_manager_id:
+        manager = _resolve_manager(req.project_manager_id)
+        project.project_manager_name = manager.display_name
     project.client_name = req.client_name
     project.description = req.description
     project.status = "active"
@@ -150,6 +169,14 @@ def update_project(project_id: str, req: ProjectUpdate, current_user: dict = Dep
     update_data = req.model_dump(exclude_none=True, exclude={"budget_docs", "quote_docs"})
     for key, value in update_data.items():
         setattr(project, key, value)
+
+    # 指派了负责人账号，姓名就以账号档案为准（覆盖前端传来的显示名）；
+    # 传空串表示"取消指派"—— exclude_none 会丢掉 None，只能用空串表达清空意图
+    if req.project_manager_id == "":
+        project.project_manager_id = None
+        project.project_manager_name = None
+    elif req.project_manager_id:
+        project.project_manager_name = _resolve_manager(req.project_manager_id).display_name
 
     if req.budget_docs is not None:
         project.budget_docs = to_attachment_maps(req.budget_docs)
